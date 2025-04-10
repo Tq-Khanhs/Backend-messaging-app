@@ -1,4 +1,4 @@
-import { uploadImage, generatePresignedUploadUrl } from "../services/s3Service.js"
+import { uploadImage, generatePresignedUploadUrl } from "../services/supabaseStorageService.js"
 
 // Upload image and return URL
 export const uploadImageAndGetUrl = async (req, res) => {
@@ -10,7 +10,7 @@ export const uploadImageAndGetUrl = async (req, res) => {
     // Optional folder parameter from request
     const folder = req.body.folder || "images"
 
-    // Upload image to S3
+    // Upload image to Supabase
     const result = await uploadImage(req.file.buffer, req.file.mimetype, folder)
 
     res.status(200).json({
@@ -33,12 +33,13 @@ export const getImageUploadUrl = async (req, res) => {
       return res.status(400).json({ message: "File type is required" })
     }
 
-    // Use the existing function from s3Service
-    const { url, key } = await generatePresignedUploadUrl(req.user ? req.user.userId : "anonymous", fileType)
+    // Use the existing function from supabaseStorageService
+    const { url, key, headers } = await generatePresignedUploadUrl(req.user ? req.user.userId : "anonymous", fileType)
 
     res.status(200).json({
       uploadUrl: url,
       key,
+      headers,
       message: "Upload URL generated successfully",
     })
   } catch (error) {

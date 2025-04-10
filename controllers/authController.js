@@ -93,12 +93,12 @@ export const completeRegistration = async (req, res) => {
       birthdate,
       gender,
       firebaseUid,
-      avatarUrl
+      avatarUrl,
     })
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.userId, phoneNumber: user.phoneNumber, firebaseUid: user.firebaseUid,avatarUrl: user.avatarUrl },
+      { userId: user.userId, phoneNumber: user.phoneNumber, firebaseUid: user.firebaseUid, avatarUrl: user.avatarUrl },
       process.env.JWT_SECRET,
       { expiresIn: "30d" },
     )
@@ -116,7 +116,7 @@ export const completeRegistration = async (req, res) => {
         fullName: user.fullName,
         birthdate: user.birthdate,
         gender: user.gender,
-        avatarUrl: user.avatarUrl
+        avatarUrl: user.avatarUrl,
       },
     })
   } catch (error) {
@@ -128,37 +128,42 @@ export const completeRegistration = async (req, res) => {
 // Login with phone and password
 export const login = async (req, res) => {
   try {
-    const { phoneNumber, password } = req.body
+    let { phoneNumber, password } = req.body;
 
     if (!phoneNumber || !password) {
-      return res.status(400).json({ message: "Phone number and password are required" })
+      return res.status(400).json({ message: "Phone number and password are required" });
+    }
+
+    // Chuẩn hóa số điện thoại: nếu bắt đầu bằng "0" thì thay bằng "+84"
+    if (phoneNumber.startsWith("0")) {
+      phoneNumber = phoneNumber.replace(/^0/, "+84");
     }
 
     // Get user by phone number
-    const user = await getUserByPhoneNumber(phoneNumber)
+    const user = await getUserByPhoneNumber(phoneNumber);
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     // Verify password
-    const isMatch = await verifyPassword(password, user.password)
+    const isMatch = await verifyPassword(password, user.password);
 
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" })
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.userId, phoneNumber: user.phoneNumber, firebaseUid: user.firebaseUid },
       process.env.JWT_SECRET,
-      { expiresIn: "30d" },
-    )
+      { expiresIn: "30d" }
+    );
 
     // Create a Firebase custom token if user has a Firebase UID
-    let firebaseCustomToken = null
+    let firebaseCustomToken = null;
     if (user.firebaseUid) {
-      firebaseCustomToken = await createCustomToken(user.firebaseUid)
+      firebaseCustomToken = await createCustomToken(user.firebaseUid);
     }
 
     res.status(200).json({
@@ -171,12 +176,13 @@ export const login = async (req, res) => {
         fullName: user.fullName,
         avatarUrl: user.avatarUrl,
       },
-    })
+    });
   } catch (error) {
-    console.error("Error in login:", error)
-    res.status(500).json({ message: "Server error", error: error.message })
+    console.error("Error in login:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
-}
+};
+
 
 // Request password reset verification code
 export const requestPasswordResetCode = async (req, res) => {

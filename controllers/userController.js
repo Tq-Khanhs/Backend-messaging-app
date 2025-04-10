@@ -1,5 +1,10 @@
 import { getUserById, updateUser } from "../models/userModel.js"
-import { uploadAvatar, getAvatarUrl, deleteAvatar, generatePresignedUploadUrl } from "../services/s3Service.js"
+import {
+  uploadAvatar,
+  getAvatarUrl,
+  deleteAvatar,
+  generatePresignedUploadUrl,
+} from "../services/supabaseStorageService.js"
 
 // Get user profile
 export const getUserProfile = async (req, res) => {
@@ -123,11 +128,12 @@ export const getAvatarUploadUrl = async (req, res) => {
     }
 
     // Generate presigned URL
-    const { url, key } = await generatePresignedUploadUrl(userId, fileType)
+    const { url, key, headers } = await generatePresignedUploadUrl(userId, fileType)
 
     res.status(200).json({
       uploadUrl: url,
       key,
+      headers,
     })
   } catch (error) {
     console.error("Error in getAvatarUploadUrl:", error)
@@ -172,4 +178,3 @@ export const confirmAvatarUpload = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
-

@@ -1,156 +1,195 @@
-import { PutItemCommand, GetItemCommand, UpdateItemCommand, QueryCommand } from "@aws-sdk/client-dynamodb"
-import { marshall, unmarshall } from "@aws-sdk/util-dynamodb"
-import { dynamoDbClient, USERS_TABLE } from "../config/awsConfig.js"
-import { v4 as uuidv4 } from "uuid"
+import mongoose from "mongoose"
 import bcrypt from "bcryptjs"
+import { v4 as uuidv4 } from "uuid"
+import { USERS_COLLECTION } from "../config/mongodbConfig.js"
 
+// Helper function to parse date in format "DD/MM/YYYY"
+const parseDateString = (dateString) => {
+  if (!dateString) return null
+
+  // Split the date string by "/"
+  const parts = dateString.split("/")
+  if (parts.length !== 3) return null
+
+  // Parse day, month, and year
+  const day = Number.parseInt(parts[0], 10)
+  const month = Number.parseInt(parts[1], 10) - 1 // Month is 0-indexed in JavaScript Date
+  const year = Number.parseInt(parts[2], 10)
+
+  // Create date using UTC to avoid timezone issues
+  const date = new Date(Date.UTC(year, month, day))
+
+  // Validate the date is correct (handles cases like 31/2/2023)
+  if (date.getUTCDate() !== day || date.getUTCMonth() !== month || date.getUTCFullYear() !== year) {
+    return null
+  }
+
+  return date
+}
+
+// Define the user schema
+const userSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true,
+      unique: true,
+      default: () => uuidv4(),
+    },
+    phoneNumber: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    fullName: {
+      type: String,
+      default: null,
+    },
+    birthdate: {
+      type: Date, 
+      default: null,
+    },
+    gender: {
+      type: String,
+      enum: [ "Nam", "Nữ", "Không chia sẻ"], 
+      default: null,
+    },
+    avatarUrl: {
+      type: String,
+      default: null,
+    },
+    firebaseUid: {
+      type: String,
+      default: null,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: {
+      createdAt: "createdAt",
+      updatedAt: "updatedAt",
+    },
+  },
+)
+
+// Create the User model
+const User = mongoose.model(USERS_COLLECTION, userSchema)
+
+// Create a new user
 export const createUser = async (userData) => {
-  const userId = userData.firebaseUid || uuidv4()
-  const timestamp = new Date().toISOString()
-
-  // Hash password if provided
-  if (userData.password) {
-    const salt = await bcrypt.genSalt(10)
-    userData.password = await bcrypt.hash(userData.password, salt)
-  }
-
-  const user = {
-    userId,
-    phoneNumber: userData.phoneNumber,
-    password: userData.password || null,
-    fullName: userData.fullName || null,
-    birthdate: userData.birthdate || null,
-    gender: userData.gender || null,
-    avatarUrl: userData.avatarUrl || null,
-    firebaseUid: userData.firebaseUid || null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    isActive: true,
-  }
-
-  const params = {
-    TableName: USERS_TABLE,
-    Item: marshall(user),
-  }
-
   try {
-    await dynamoDbClient.send(new PutItemCommand(params))
+    const userId = userData.firebaseUid || uuidv4()
+
+    // Hash password if provided
+    if (userData.password) {
+      const salt = await bcrypt.genSalt(10)
+      userData.password = await bcrypt.hash(userData.password, salt)
+    }
+
+    // Parse birthdate if it's a string in format DD/MM/YYYY
+    let birthdate = null
+    if (userData.birthdate) {
+      if (typeof userData.birthdate === "string") {
+        birthdate = parseDateString(userData.birthdate)
+        if (!birthdate) {
+          console.warn(`Invalid birthdate format: ${userData.birthdate}. Expected format: DD/MM/YYYY`)
+        }
+      } else if (userData.birthdate instanceof Date) {
+        birthdate = userData.birthdate
+      }
+    }
+
+    const user = new User({
+      userId,
+      phoneNumber: userData.phoneNumber,
+      password: userData.password || null,
+      fullName: userData.fullName || null,
+      birthdate: birthdate,
+      gender: userData.gender || null,
+      avatarUrl: userData.avatarUrl || null,
+      firebaseUid: userData.firebaseUid || null,
+    })
+
+    await user.save()
+    return user.toObject()
+  } catch (error) {
+    console.error("Error creating user in MongoDB:", error)
+    throw error
+  }
+}
+
+// Get user by phone number
+export const getUserByPhoneNumber = async (phoneNumber) => {
+  try {
+    const user = await User.findOne({ phoneNumber }).lean()
     return user
   } catch (error) {
-    console.error("Error creating user:", error)
+    console.error("Error getting user by phone number from MongoDB:", error)
     throw error
   }
 }
 
-export const getUserByPhoneNumber = async (phoneNumber) => {
-  const params = {
-    TableName: USERS_TABLE,
-    IndexName: "PhoneNumberIndex",
-    KeyConditionExpression: "phoneNumber = :phoneNumber",
-    ExpressionAttributeValues: marshall({
-      ":phoneNumber": phoneNumber,
-    }),
-  }
-
-  try {
-    const { Items } = await dynamoDbClient.send(new QueryCommand(params))
-    if (Items && Items.length > 0) {
-      return unmarshall(Items[0])
-    }
-    return null
-  } catch (error) {
-    console.error("Error getting user by phone number:", error)
-    throw error
-  }
-}
-
+// Get user by Firebase UID
 export const getUserByFirebaseUid = async (firebaseUid) => {
-  const params = {
-    TableName: USERS_TABLE,
-    IndexName: "FirebaseUidIndex",
-    KeyConditionExpression: "firebaseUid = :firebaseUid",
-    ExpressionAttributeValues: marshall({
-      ":firebaseUid": firebaseUid,
-    }),
-  }
-
   try {
-    const { Items } = await dynamoDbClient.send(new QueryCommand(params))
-    if (Items && Items.length > 0) {
-      return unmarshall(Items[0])
-    }
-    return null
+    const user = await User.findOne({ firebaseUid }).lean()
+    return user
   } catch (error) {
-    console.error("Error getting user by Firebase UID:", error)
+    console.error("Error getting user by Firebase UID from MongoDB:", error)
     throw error
   }
 }
 
+// Get user by ID
 export const getUserById = async (userId) => {
-  const params = {
-    TableName: USERS_TABLE,
-    Key: marshall({
-      userId,
-    }),
-  }
-
   try {
-    const { Item } = await dynamoDbClient.send(new GetItemCommand(params))
-    if (Item) {
-      return unmarshall(Item)
-    }
-    return null
+    const user = await User.findOne({ userId }).lean()
+    return user
   } catch (error) {
-    console.error("Error getting user by ID:", error)
+    console.error("Error getting user by ID from MongoDB:", error)
     throw error
   }
 }
 
+// Update user
 export const updateUser = async (userId, updateData) => {
-  const timestamp = new Date().toISOString()
-
-  // Hash password if provided
-  if (updateData.password) {
-    console.log("Hashing password before update")
-    const salt = await bcrypt.genSalt(10)
-    updateData.password = await bcrypt.hash(updateData.password, salt)
-  }
-
-  // Build update expression
-  let updateExpression = "SET updatedAt = :updatedAt"
-  const expressionAttributeValues = {
-    ":updatedAt": timestamp,
-  }
-
-  Object.keys(updateData).forEach((key) => {
-    if (key !== "userId" && key !== "phoneNumber" && key !== "firebaseUid") {
-      updateExpression += `, ${key} = :${key}`
-      expressionAttributeValues[`:${key}`] = updateData[key]
-    }
-  })
-
-  console.log("Update expression:", updateExpression)
-  console.log("Expression attribute values:", expressionAttributeValues)
-
-  const params = {
-    TableName: USERS_TABLE,
-    Key: marshall({
-      userId,
-    }),
-    UpdateExpression: updateExpression,
-    ExpressionAttributeValues: marshall(expressionAttributeValues),
-    ReturnValues: "ALL_NEW",
-  }
-
   try {
-    const { Attributes } = await dynamoDbClient.send(new UpdateItemCommand(params))
-    return Attributes ? unmarshall(Attributes) : null
+    // Hash password if provided
+    if (updateData.password) {
+      const salt = await bcrypt.genSalt(10)
+      updateData.password = await bcrypt.hash(updateData.password, salt)
+    }
+
+    // Parse birthdate if it's a string in format DD/MM/YYYY
+    if (updateData.birthdate && typeof updateData.birthdate === "string") {
+      const birthdate = parseDateString(updateData.birthdate)
+      if (birthdate) {
+        updateData.birthdate = birthdate
+      } else {
+        console.warn(`Invalid birthdate format: ${updateData.birthdate}. Expected format: DD/MM/YYYY`)
+        delete updateData.birthdate // Remove invalid birthdate from update
+      }
+    }
+
+    const updatedUser = await User.findOneAndUpdate({ userId }, { $set: updateData }, { new: true }).lean()
+
+    return updatedUser
   } catch (error) {
-    console.error("Error updating user:", error)
+    console.error("Error updating user in MongoDB:", error)
     throw error
   }
 }
+
 
 export const verifyPassword = async (plainPassword, hashedPassword) => {
   return await bcrypt.compare(plainPassword, hashedPassword)
 }
+
+export default User

@@ -144,5 +144,3 @@ const formatPhoneNumber = (phoneNumber) => {
 
   return "+" + cleaned
 }
-
-
