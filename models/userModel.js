@@ -109,6 +109,13 @@ export const getUserById = async (userId) => {
 export const updateUser = async (userId, updateData) => {
   const timestamp = new Date().toISOString()
 
+  // Hash password if provided
+  if (updateData.password) {
+    console.log("Hashing password before update")
+    const salt = await bcrypt.genSalt(10)
+    updateData.password = await bcrypt.hash(updateData.password, salt)
+  }
+
   // Build update expression
   let updateExpression = "SET updatedAt = :updatedAt"
   const expressionAttributeValues = {
@@ -121,6 +128,9 @@ export const updateUser = async (userId, updateData) => {
       expressionAttributeValues[`:${key}`] = updateData[key]
     }
   })
+
+  console.log("Update expression:", updateExpression)
+  console.log("Expression attribute values:", expressionAttributeValues)
 
   const params = {
     TableName: USERS_TABLE,
@@ -144,4 +154,3 @@ export const updateUser = async (userId, updateData) => {
 export const verifyPassword = async (plainPassword, hashedPassword) => {
   return await bcrypt.compare(plainPassword, hashedPassword)
 }
-

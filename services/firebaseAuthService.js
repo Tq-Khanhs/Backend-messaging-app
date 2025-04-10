@@ -3,108 +3,113 @@ import dotenv from "dotenv"
 
 dotenv.config()
 
-
+// Verify phone number with code
 export const verifyPhoneNumber = async (sessionInfo, code) => {
   try {
-    if (!sessionInfo || !sessionInfo.startsWith('firebase_session_')) {
+    if (!sessionInfo || !sessionInfo.startsWith("firebase_session_")) {
       return {
         isValid: false,
-        error: "Invalid session information"
-      };
+        error: "Invalid session information",
+      }
     }
 
-    const verificationData = await getVerificationDataFromSession(sessionInfo);
+    const verificationData = await getVerificationDataFromSession(sessionInfo)
 
     if (!verificationData) {
       return {
         isValid: false,
-        error: "Session expired or not found"
-      };
+        error: "Session expired or not found",
+      }
     }
 
     if (verificationData.code !== code) {
-      verificationData.attempts += 1;
+      verificationData.attempts += 1
       if (verificationData.attempts >= 3) {
-        await removeVerificationSession(sessionInfo);
+        await removeVerificationSession(sessionInfo)
         return {
           isValid: false,
-          error: "Too many failed attempts. Please request a new code."
-        };
+          error: "Too many failed attempts. Please request a new code.",
+        }
       }
-      await updateVerificationAttempts(sessionInfo, verificationData.attempts);
+      await updateVerificationAttempts(sessionInfo, verificationData.attempts)
 
       return {
         isValid: false,
-        error: "Invalid verification code"
-      };
+        error: "Invalid verification code",
+      }
     }
 
-    const now = Date.now();
+    const now = Date.now()
     if (now > verificationData.expiresAt) {
-      await removeVerificationSession(sessionInfo);
+      await removeVerificationSession(sessionInfo)
       return {
         isValid: false,
-        error: "Verification code has expired"
-      };
+        error: "Verification code has expired",
+      }
     }
-    await removeVerificationSession(sessionInfo);
-    const firebaseUid = `firebase_${Date.now()}`;
+    await removeVerificationSession(sessionInfo)
+    const firebaseUid = `firebase_${Date.now()}`
 
     return {
       isValid: true,
       firebaseUid,
-      phoneNumber: verificationData.phoneNumber
-    };
+      phoneNumber: verificationData.phoneNumber,
+    }
   } catch (error) {
-    console.error("Error verifying phone number:", error);
+    console.error("Error verifying phone number:", error)
     return {
       isValid: false,
-      error: error.message
-    };
+      error: error.message,
+    }
   }
-};
+}
 
-
-const verificationSessions = new Map();
+const verificationSessions = new Map()
 
 async function getVerificationDataFromSession(sessionInfo) {
-  return verificationSessions.get(sessionInfo);
+  return verificationSessions.get(sessionInfo)
 }
 
 async function updateVerificationAttempts(sessionInfo, attempts) {
-  const data = verificationSessions.get(sessionInfo);
+  const data = verificationSessions.get(sessionInfo)
   if (data) {
-    data.attempts = attempts;
-    verificationSessions.set(sessionInfo, data);
+    data.attempts = attempts
+    verificationSessions.set(sessionInfo, data)
   }
 }
 
 async function removeVerificationSession(sessionInfo) {
-  verificationSessions.delete(sessionInfo);
+  verificationSessions.delete(sessionInfo)
 }
-
 
 export const createPhoneAuthSession = async (phoneNumber) => {
   try {
-    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-    const e164PhoneNumber = formattedPhoneNumber.startsWith("+")
-      ? formattedPhoneNumber
-      : "+" + formattedPhoneNumber;
+    const formattedPhoneNumber = formatPhoneNumber(phoneNumber)
+    const e164PhoneNumber = formattedPhoneNumber.startsWith("+") ? formattedPhoneNumber : "+" + formattedPhoneNumber
 
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const sessionInfo = `firebase_session_${Date.now()}`;
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
+    const sessionInfo = `firebase_session_${Date.now()}`
 
-    console.log(`Verification code for ${e164PhoneNumber}: ${verificationCode}`);
+    // Store the verification data in the Map - THIS IS THE MISSING PART
+    verificationSessions.set(sessionInfo, {
+      phoneNumber: e164PhoneNumber,
+      code: verificationCode,
+      attempts: 0,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes expiration
+    })
+
+    console.log(`Verification code for ${e164PhoneNumber}: ${verificationCode}`)
     return {
       sessionInfo,
       phoneNumber: e164PhoneNumber,
-      verificationCode
-    };
+      verificationCode,
+    }
   } catch (error) {
-    console.error("Error creating phone auth session:", error);
-    throw error;
+    console.error("Error creating phone auth session:", error)
+    throw error
   }
-};
+}
 
 export const createCustomToken = async (uid) => {
   try {
@@ -116,7 +121,6 @@ export const createCustomToken = async (uid) => {
   }
 }
 
-
 export const verifyIdToken = async (idToken) => {
   try {
     const decodedToken = await auth.verifyIdToken(idToken)
@@ -127,18 +131,18 @@ export const verifyIdToken = async (idToken) => {
   }
 }
 
-
 const formatPhoneNumber = (phoneNumber) => {
   if (phoneNumber.startsWith("+")) {
-    return "+" + phoneNumber.replace(/\D/g, "");
+    return "+" + phoneNumber.replace(/\D/g, "")
   }
 
-  let cleaned = phoneNumber.replace(/\D/g, "");
+  let cleaned = phoneNumber.replace(/\D/g, "")
 
   if (cleaned.startsWith("0")) {
-    cleaned = "84" + cleaned.substring(1);
+    cleaned = "84" + cleaned.substring(1)
   }
 
-  return "+" + cleaned;
-};
+  return "+" + cleaned
+}
+
 

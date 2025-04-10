@@ -4,7 +4,9 @@ import {
   verifyPhoneNumber,
   completeRegistration,
   login,
-  requestPasswordReset,
+  requestPasswordResetCode,
+  verifyPasswordResetCode,
+  completePasswordReset,
   resetPassword,
 } from "../controllers/authController.js"
 import { validateRequest } from "../middleware/validationMiddleware.js"
@@ -23,11 +25,12 @@ router.post("/register", validateRequest(["phoneNumber", "password", "firebaseUi
 // Login with phone and password
 router.post("/login", validateRequest(["phoneNumber", "password"]), login)
 
-// Request password reset
-router.post("/request-password-reset", validateRequest(["phoneNumber"]), requestPasswordReset)
+// Password reset - new two-step flow
+router.post("/request-password-reset-code", validateRequest(["phoneNumber"]), requestPasswordResetCode)
+router.post("/verify-reset-code", validateRequest(["sessionInfo", "code", "phoneNumber"]), verifyPasswordResetCode)
+router.post("/complete-password-reset", validateRequest(["resetToken", "newPassword"]), completePasswordReset)
 
-// Reset password with verification code
+// Legacy password reset endpoint - can be removed after updating clients
 router.post("/reset-password", validateRequest(["sessionInfo", "code", "phoneNumber", "newPassword"]), resetPassword)
 
 export default router
-

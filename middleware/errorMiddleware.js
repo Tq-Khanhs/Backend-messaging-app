@@ -1,14 +1,17 @@
 export const errorHandler = (err, req, res, next) => {
-    // Log error for debugging
-    console.error("Error:", err);
-
-    // Set status code
-    const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-
-    // Send error response
-    res.status(statusCode).json({
-        message: err.message || "Server Error",
-        stack: process.env.NODE_ENV === "production" ? null : err.stack,
-    });
-};
-
+    console.error("Global error handler caught an error:", err)
+  
+    // Customize error messages based on the error type or status code
+    if (err.name === "ValidationError") {
+      // Mongoose validation error
+      return res.status(400).json({ message: err.message })
+    }
+  
+    if (err.status === 404) {
+      return res.status(404).json({ message: "Resource not found" })
+    }
+  
+    // Generic error response
+    res.status(500).json({ message: "Something went wrong", error: err.message })
+  }
+  
