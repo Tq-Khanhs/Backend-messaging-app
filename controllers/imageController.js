@@ -1,16 +1,13 @@
 import { uploadImage, generatePresignedUploadUrl } from "../services/supabaseStorageService.js"
 
-// Upload image and return URL
 export const uploadImageAndGetUrl = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" })
     }
 
-    // Optional folder parameter from request
     const folder = req.body.folder || "images"
 
-    // Upload image to Supabase
     const result = await uploadImage(req.file.buffer, req.file.mimetype, folder)
 
     res.status(200).json({
@@ -24,7 +21,6 @@ export const uploadImageAndGetUrl = async (req, res) => {
   }
 }
 
-// Generate presigned URL for client-side image upload
 export const getImageUploadUrl = async (req, res) => {
   try {
     const { fileType, folder } = req.body
@@ -33,7 +29,6 @@ export const getImageUploadUrl = async (req, res) => {
       return res.status(400).json({ message: "File type is required" })
     }
 
-    // Use the existing function from supabaseStorageService
     const { url, key, headers } = await generatePresignedUploadUrl(req.user ? req.user.userId : "anonymous", fileType)
 
     res.status(200).json({

@@ -4,12 +4,8 @@ import dotenv from "dotenv"
 dotenv.config()
 
 const MONGODB_URI = process.env.MONGODB_URI
-
-// Collections
 export const USERS_COLLECTION = "users"
 export const VERIFICATION_CODES_COLLECTION = "verification_codes"
-
-// Connect to MongoDB
 export const connectDB = async () => {
   try {
     const conn = await mongoose.connect(MONGODB_URI, {

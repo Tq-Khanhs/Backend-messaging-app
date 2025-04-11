@@ -19,7 +19,7 @@ export const initializeStorage = async () => {
     if (!buckets.find((bucket) => bucket.name === USER_AVATARS_BUCKET)) {
       await supabaseClient.storage.createBucket(USER_AVATARS_BUCKET, {
         public: false,
-        fileSizeLimit: 5242880, // 5MB
+        fileSizeLimit: 5242880, 
       })
       console.log(`Created ${USER_AVATARS_BUCKET} bucket`)
     }
@@ -27,7 +27,7 @@ export const initializeStorage = async () => {
     if (!buckets.find((bucket) => bucket.name === IMAGES_BUCKET)) {
       await supabaseClient.storage.createBucket(IMAGES_BUCKET, {
         public: true,
-        fileSizeLimit: 10485760, // 10MB
+        fileSizeLimit: 10485760, 
       })
       console.log(`Created ${IMAGES_BUCKET} bucket`)
     }

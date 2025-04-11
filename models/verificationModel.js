@@ -1,13 +1,14 @@
 import mongoose from "mongoose"
 import { VERIFICATION_CODES_COLLECTION } from "../config/mongodbConfig.js"
 
-// Define the verification code schema
 const verificationCodeSchema = new mongoose.Schema(
   {
-    phoneNumber: {
+    email: {
       type: String,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
     },
     code: {
       type: String,
@@ -30,19 +31,15 @@ const verificationCodeSchema = new mongoose.Schema(
   },
 )
 
-// Create the VerificationCode model
 const VerificationCode = mongoose.model(VERIFICATION_CODES_COLLECTION, verificationCodeSchema)
 
-// Create a verification code
-export const createVerificationCode = async (phoneNumber) => {
+export const createVerificationCode = async (email) => {
   try {
-    // Generate a random 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiration
 
-    // Create or update the verification code
-    const verificationCode = await VerificationCode.findOneAndUpdate(
-      { phoneNumber },
+    await VerificationCode.findOneAndUpdate(
+      { email: email.toLowerCase() },
       {
         code,
         attempts: 0,
@@ -58,10 +55,9 @@ export const createVerificationCode = async (phoneNumber) => {
   }
 }
 
-// Get verification code
-export const getVerificationCode = async (phoneNumber) => {
+export const getVerificationCode = async (email) => {
   try {
-    const verificationCode = await VerificationCode.findOne({ phoneNumber }).lean()
+    const verificationCode = await VerificationCode.findOne({ email: email.toLowerCase() }).lean()
     return verificationCode
   } catch (error) {
     console.error("Error getting verification code:", error)
@@ -69,40 +65,33 @@ export const getVerificationCode = async (phoneNumber) => {
   }
 }
 
-// Verify code
-export const verifyCode = async (phoneNumber, code) => {
+export const verifyCode = async (email, code) => {
   try {
-    const verificationData = await getVerificationCode(phoneNumber)
+    const verificationData = await getVerificationCode(email.toLowerCase())
 
     if (!verificationData) {
       return { valid: false, message: "Verification code not found" }
     }
 
-    // Check if code is expired
     if (new Date(verificationData.expiresAt) < new Date()) {
-      await deleteVerificationCode(phoneNumber)
+      await deleteVerificationCode(email)
       return { valid: false, message: "Verification code has expired" }
     }
 
-    // Update attempts
     const attempts = verificationData.attempts + 1
 
-    // Check if too many attempts
     if (attempts > 3) {
-      await deleteVerificationCode(phoneNumber)
+      await deleteVerificationCode(email)
       return { valid: false, message: "Too many attempts. Please request a new code" }
     }
 
-    // Update attempts in database
-    await updateVerificationAttempts(phoneNumber, attempts)
+    await updateVerificationAttempts(email, attempts)
 
-    // Check if code matches
     if (verificationData.code !== code) {
       return { valid: false, message: "Invalid verification code" }
     }
 
-    // Code is valid, delete it from database
-    await deleteVerificationCode(phoneNumber)
+    await deleteVerificationCode(email)
 
     return { valid: true, message: "Verification successful" }
   } catch (error) {
@@ -111,20 +100,18 @@ export const verifyCode = async (phoneNumber, code) => {
   }
 }
 
-// Update verification attempts
-export const updateVerificationAttempts = async (phoneNumber, attempts) => {
+export const updateVerificationAttempts = async (email, attempts) => {
   try {
-    await VerificationCode.updateOne({ phoneNumber }, { $set: { attempts } })
+    await VerificationCode.updateOne({ email: email.toLowerCase() }, { $set: { attempts } })
   } catch (error) {
     console.error("Error updating verification attempts:", error)
     throw error
   }
 }
 
-// Delete verification code
-export const deleteVerificationCode = async (phoneNumber) => {
+export const deleteVerificationCode = async (email) => {
   try {
-    await VerificationCode.deleteOne({ phoneNumber })
+    await VerificationCode.deleteOne({ email: email.toLowerCase() })
   } catch (error) {
     console.error("Error deleting verification code:", error)
     throw error

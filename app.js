@@ -7,7 +7,6 @@ import authRoutes from "./routes/authRoutes.js"
 import userRoutes from "./routes/userRoutes.js"
 import imageRoutes from "./routes/imageRoutes.js"
 import { errorHandler } from "./middleware/errorMiddleware.js"
-import "./config/firebaseConfig.js"
 import { initializeStorage } from "./config/supabaseConfig.js"
 import { connectDB } from "./config/mongodbConfig.js"
 
@@ -16,9 +15,7 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 5000
 
-
 connectDB().catch(console.error)
-
 
 initializeStorage().catch(console.error)
 

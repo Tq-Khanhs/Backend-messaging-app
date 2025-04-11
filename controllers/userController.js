@@ -5,8 +5,8 @@ import {
   deleteAvatar,
   generatePresignedUploadUrl,
 } from "../services/supabaseStorageService.js"
+import { validateEmail } from "../services/emailService.js"
 
-// Get user profile
 export const getUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId
@@ -17,7 +17,6 @@ export const getUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Generate signed URL for avatar if exists
     let avatarUrl = null
     if (user.avatarUrl) {
       avatarUrl = await getAvatarUrl(user.avatarUrl)
@@ -25,7 +24,7 @@ export const getUserProfile = async (req, res) => {
 
     res.status(200).json({
       userId: user.userId,
-      phoneNumber: user.phoneNumber,
+      email: user.email,
       fullName: user.fullName,
       birthdate: user.birthdate,
       gender: user.gender,
@@ -37,24 +36,31 @@ export const getUserProfile = async (req, res) => {
   }
 }
 
-// Update user profile
 export const updateUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId
-    const { fullName, birthdate, gender } = req.body
+    const { fullName, birthdate, gender, email } = req.body
 
-    // Update user in database
-    const updatedUser = await updateUser(userId, {
+    const updateData = {
       fullName,
       birthdate,
       gender,
-    })
+    }
+
+    // If email is being updated, validate it
+    if (email) {
+      if (!validateEmail(email)) {
+        return res.status(400).json({ message: "Invalid email format" })
+      }
+      updateData.email = email
+    }
+
+    const updatedUser = await updateUser(userId, updateData)
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Generate signed URL for avatar if exists
     let avatarUrl = null
     if (updatedUser.avatarUrl) {
       avatarUrl = await getAvatarUrl(updatedUser.avatarUrl)
@@ -64,7 +70,7 @@ export const updateUserProfile = async (req, res) => {
       message: "Profile updated successfully",
       user: {
         userId: updatedUser.userId,
-        phoneNumber: updatedUser.phoneNumber,
+        email: updatedUser.email,
         fullName: updatedUser.fullName,
         birthdate: updatedUser.birthdate,
         gender: updatedUser.gender,
@@ -77,7 +83,6 @@ export const updateUserProfile = async (req, res) => {
   }
 }
 
-// Upload avatar
 export const uploadUserAvatar = async (req, res) => {
   try {
     const userId = req.user.userId
@@ -86,25 +91,17 @@ export const uploadUserAvatar = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" })
     }
 
-    // Get user
     const user = await getUserById(userId)
 
     if (!user) {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Delete old avatar if exists
     if (user.avatarUrl) {
       await deleteAvatar(user.avatarUrl)
     }
-
-    // Upload new avatar
     const key = await uploadAvatar(userId, req.file.buffer, req.file.mimetype)
-
-    // Update user with new avatar URL
     const updatedUser = await updateUser(userId, { avatarUrl: key })
-
-    // Generate signed URL for avatar
     const avatarUrl = await getAvatarUrl(key)
 
     res.status(200).json({
@@ -117,7 +114,6 @@ export const uploadUserAvatar = async (req, res) => {
   }
 }
 
-// Get presigned URL for client-side upload
 export const getAvatarUploadUrl = async (req, res) => {
   try {
     const userId = req.user.userId
@@ -127,7 +123,6 @@ export const getAvatarUploadUrl = async (req, res) => {
       return res.status(400).json({ message: "File type is required" })
     }
 
-    // Generate presigned URL
     const { url, key, headers } = await generatePresignedUploadUrl(userId, fileType)
 
     res.status(200).json({
@@ -141,7 +136,6 @@ export const getAvatarUploadUrl = async (req, res) => {
   }
 }
 
-// Confirm avatar upload and update user profile
 export const confirmAvatarUpload = async (req, res) => {
   try {
     const userId = req.user.userId
@@ -150,23 +144,17 @@ export const confirmAvatarUpload = async (req, res) => {
     if (!key) {
       return res.status(400).json({ message: "Avatar key is required" })
     }
-
-    // Get user
     const user = await getUserById(userId)
 
     if (!user) {
       return res.status(404).json({ message: "User not found" })
     }
-
-    // Delete old avatar if exists
     if (user.avatarUrl) {
       await deleteAvatar(user.avatarUrl)
     }
 
-    // Update user with new avatar URL
     const updatedUser = await updateUser(userId, { avatarUrl: key })
 
-    // Generate signed URL for avatar
     const avatarUrl = await getAvatarUrl(key)
 
     res.status(200).json({

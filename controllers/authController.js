@@ -1,118 +1,166 @@
-import { createUser, getUserByPhoneNumber, verifyPassword, updateUser, getUserById } from "../models/userModel.js"
-import {
-  createPhoneAuthSession,
-  verifyPhoneNumber as verifyPhone,
-  createCustomToken,
-} from "../services/firebaseAuthService.js"
+import { createUser, getUserByEmail, verifyPassword, updateUser, getUserById } from "../models/userModel.js"
+import { sendVerificationEmail, verifyEmailCode, validateEmail } from "../services/emailService.js"
+import * as alternativeEmailService from "../services/alternativeEmailService.js"
 import jwt from "jsonwebtoken"
 import dotenv from "dotenv"
+import { v4 as uuidv4 } from "uuid"
 
 dotenv.config()
+const isDevelopment = process.env.NODE_ENV === "development"
 
-// Request verification code for registration
 export const requestVerificationCode = async (req, res) => {
   try {
-    const { phoneNumber } = req.body
+    const { email } = req.body
 
-    if (!phoneNumber) {
-      return res.status(400).json({ message: "Phone number is required" })
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" })
     }
 
-    // Check if user already exists
-    const existingUser = await getUserByPhoneNumber(phoneNumber)
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
+    }
+
+    const existingUser = await getUserByEmail(email)
     if (existingUser) {
-      return res.status(400).json({ message: "User with this phone number already exists" })
+      return res.status(400).json({ message: "User with this email already exists" })
     }
 
-    // Create a Firebase phone auth session
-    const session = await createPhoneAuthSession(phoneNumber)
+    console.log(`Sending verification email to ${email}...`)
 
-    // In a real implementation, Firebase would send the SMS automatically
-    // For this demo, we'll return the session info to the client
-    // Note: In production, you would NOT return the verification code to the client
-    res.status(200).json({
-      message: "Verification code sent successfully",
-      sessionInfo: session.sessionInfo,
-      phoneNumber: session.phoneNumber,
-      // Only for testing - remove in production:
-      verificationCode: session.verificationCode,
-    })
+    let result
+    try {
+      // Try the primary email service first
+      result = await sendVerificationEmail(email)
+      console.log(`Primary email service result:`, result)
+    } catch (primaryError) {
+      console.error("Primary email service failed:", primaryError)
+
+      // If primary fails, try the alternative service
+      try {
+        console.log("Trying alternative email service...")
+        result = await alternativeEmailService.sendVerificationEmail(email)
+        console.log(`Alternative email service result:`, result)
+      } catch (alternativeError) {
+        console.error("Alternative email service also failed:", alternativeError)
+
+        // If both fail in production, throw error
+        if (!isDevelopment) {
+          throw new Error("Failed to send verification email through both services")
+        }
+
+        // In development, create a code anyway
+        const code = Math.floor(100000 + Math.random() * 900000).toString()
+        result = {
+          success: false,
+          verificationCode: code,
+          error: "Both email services failed",
+        }
+      }
+    }
+
+    // In development, return the verification code for testing
+    const responseData = {
+      message: "Verification code sent successfully to your email",
+      email: email.toLowerCase(),
+      emailSent: result.success,
+    }
+
+    if (isDevelopment) {
+      responseData.verificationCode = result.verificationCode
+      responseData.devMode = true
+      responseData.messageId = result.messageId
+    }
+
+    res.status(200).json(responseData)
   } catch (error) {
     console.error("Error in requestVerificationCode:", error)
-    res.status(500).json({ message: "Server error", error: error.message })
+
+    // If in development mode, still return a success response with a code
+    if (isDevelopment) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString()
+      res.status(200).json({
+        message: "Development mode: Verification code generated (not sent via email)",
+        email: req.body.email.toLowerCase(),
+        verificationCode: code,
+        devMode: true,
+        error: error.message,
+      })
+    } else {
+      res.status(500).json({ message: "Server error", error: error.message })
+    }
   }
 }
 
-// Verify code and register user
-export const verifyPhoneNumber = async (req, res) => {
+export const verifyEmailAddress = async (req, res) => {
   try {
-    const { sessionInfo, code, phoneNumber } = req.body
+    const { code, email } = req.body
 
-    if (!sessionInfo || !code || !phoneNumber) {
-      return res.status(400).json({ message: "Session info, verification code, and phone number are required" })
+    if (!code || !email) {
+      return res.status(400).json({ message: "Verification code and email are required" })
     }
 
-    // Verify the code with Firebase
-    const verification = await verifyPhone(sessionInfo, code)
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
+    }
+
+    const verification = await verifyEmailCode(email, code)
 
     if (!verification.isValid) {
-      return res.status(400).json({ message: "Invalid verification code" })
+      return res.status(400).json({ message: verification.message || "Invalid verification code" })
     }
 
-    // At this point, verification is successful
-    // We'll return a temporary token that can be used for the next steps of registration
-    const tempToken = jwt.sign({ phoneNumber, firebaseUid: verification.firebaseUid }, process.env.JWT_SECRET, {
+    // Generate a unique ID for the user
+    const userId = uuidv4()
+
+    const tempToken = jwt.sign({ email: email.toLowerCase(), userId }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     })
 
     res.status(200).json({
-      message: "Phone number verified successfully",
+      message: "Email verified successfully",
       tempToken,
-      firebaseUid: verification.firebaseUid,
+      userId,
     })
   } catch (error) {
-    console.error("Error in verifyPhoneNumber:", error)
+    console.error("Error in verifyEmailAddress:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
 
-// Complete registration with user details
 export const completeRegistration = async (req, res) => {
   try {
-    const { phoneNumber, password, fullName, birthdate, gender, firebaseUid, avatarUrl } = req.body
+    const { email, password, fullName, birthdate, gender, userId, avatarUrl } = req.body
 
-    if (!phoneNumber || !password || !firebaseUid) {
-      return res.status(400).json({ message: "Phone number, password, and Firebase UID are required" })
+    if (!email || !password || !userId) {
+      return res.status(400).json({ message: "Email, password, and user ID are required" })
     }
 
-    // Create user in database
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
+    }
+
     const user = await createUser({
-      phoneNumber,
+      userId,
+      email,
       password,
       fullName,
       birthdate,
       gender,
-      firebaseUid,
       avatarUrl,
     })
 
-    // Generate JWT token
     const token = jwt.sign(
-      { userId: user.userId, phoneNumber: user.phoneNumber, firebaseUid: user.firebaseUid, avatarUrl: user.avatarUrl },
+      { userId: user.userId, email: user.email, avatarUrl: user.avatarUrl },
       process.env.JWT_SECRET,
       { expiresIn: "30d" },
     )
 
-    // Create a Firebase custom token
-    const firebaseCustomToken = await createCustomToken(firebaseUid)
-
     res.status(201).json({
       message: "User registered successfully",
       token,
-      firebaseCustomToken,
       user: {
         userId: user.userId,
-        phoneNumber: user.phoneNumber,
+        email: user.email,
         fullName: user.fullName,
         birthdate: user.birthdate,
         gender: user.gender,
@@ -125,146 +173,138 @@ export const completeRegistration = async (req, res) => {
   }
 }
 
-// Login with phone and password
 export const login = async (req, res) => {
   try {
-    let { phoneNumber, password } = req.body;
+    const { email, password } = req.body
 
-    if (!phoneNumber || !password) {
-      return res.status(400).json({ message: "Phone number and password are required" });
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" })
     }
 
-    // Chuẩn hóa số điện thoại: nếu bắt đầu bằng "0" thì thay bằng "+84"
-    if (phoneNumber.startsWith("0")) {
-      phoneNumber = phoneNumber.replace(/^0/, "+84");
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
     }
 
-    // Get user by phone number
-    const user = await getUserByPhoneNumber(phoneNumber);
+    const user = await getUserByEmail(email)
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Invalid credentials" })
     }
 
-    // Verify password
-    const isMatch = await verifyPassword(password, user.password);
+    const isMatch = await verifyPassword(password, user.password)
 
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Invalid credentials" })
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.userId, phoneNumber: user.phoneNumber, firebaseUid: user.firebaseUid },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
-    );
-
-    // Create a Firebase custom token if user has a Firebase UID
-    let firebaseCustomToken = null;
-    if (user.firebaseUid) {
-      firebaseCustomToken = await createCustomToken(user.firebaseUid);
-    }
+    const token = jwt.sign({ userId: user.userId, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    })
 
     res.status(200).json({
       message: "Login successful",
       token,
-      firebaseCustomToken,
       user: {
         userId: user.userId,
-        phoneNumber: user.phoneNumber,
+        email: user.email,
         fullName: user.fullName,
         avatarUrl: user.avatarUrl,
       },
-    });
-  } catch (error) {
-    console.error("Error in login:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-
-// Request password reset verification code
-export const requestPasswordResetCode = async (req, res) => {
-  try {
-    const { phoneNumber } = req.body
-
-    if (!phoneNumber) {
-      return res.status(400).json({ message: "Phone number is required" })
-    }
-
-    // Check if user exists
-    const user = await getUserByPhoneNumber(phoneNumber)
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" })
-    }
-
-    // Create a Firebase phone auth session
-    const session = await createPhoneAuthSession(phoneNumber)
-
-    console.log("Password reset session created:", {
-      sessionInfo: session.sessionInfo,
-      phoneNumber: session.phoneNumber,
-      verificationCode: session.verificationCode,
-    })
-
-    // In a real implementation, Firebase would send the SMS automatically
-    res.status(200).json({
-      message: "Password reset code sent successfully",
-      sessionInfo: session.sessionInfo,
-      phoneNumber: session.phoneNumber,
-      verificationCode: session.verificationCode, // For testing only
     })
   } catch (error) {
-    console.error("Error in requestPasswordResetCode:", error)
+    console.error("Error in login:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
 
-// Verify password reset code
-export const verifyPasswordResetCode = async (req, res) => {
+export const requestPasswordResetCode = async (req, res) => {
   try {
-    const { sessionInfo, code, phoneNumber } = req.body
+    const { email } = req.body
 
-    if (!sessionInfo || !code || !phoneNumber) {
-      return res.status(400).json({
-        message: "Session info, verification code, and phone number are required",
-        receivedFields: {
-          sessionInfo: !!sessionInfo,
-          code: !!code,
-          phoneNumber: !!phoneNumber,
-        },
-      })
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" })
     }
 
-    // Verify the code with Firebase
-    console.log("Verifying reset code:", { sessionInfo, code })
-    const verification = await verifyPhone(sessionInfo, code)
-    console.log("Verification result:", verification)
-
-    if (!verification.isValid) {
-      return res.status(400).json({
-        message: "Invalid verification code",
-        error: verification.error,
-      })
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
     }
 
-    // Check if user exists
-    const user = await getUserByPhoneNumber(phoneNumber)
+    const user = await getUserByEmail(email)
+
     if (!user) {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Generate a reset token that will be used for the actual password reset
-    const resetToken = jwt.sign(
-      { userId: user.userId, phoneNumber: user.phoneNumber },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }, // Short expiration for security
-    )
+    const result = await sendVerificationEmail(email)
+
+    // In development, return the verification code for testing
+    const responseData = {
+      message: "Password reset code sent successfully to your email",
+      email: email.toLowerCase(),
+    }
+
+    if (isDevelopment) {
+      responseData.verificationCode = result.verificationCode
+      responseData.devMode = true
+    }
+
+    res.status(200).json(responseData)
+  } catch (error) {
+    console.error("Error in requestPasswordResetCode:", error)
+
+    // If in development mode, still return a success response with a code
+    if (isDevelopment) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString()
+      res.status(200).json({
+        message: "Development mode: Password reset code generated (not sent via email)",
+        email: req.body.email.toLowerCase(),
+        verificationCode: code,
+        devMode: true,
+        error: error.message,
+      })
+    } else {
+      res.status(500).json({ message: "Server error", error: error.message })
+    }
+  }
+}
+
+export const verifyPasswordResetCode = async (req, res) => {
+  try {
+    const { code, email } = req.body
+
+    if (!code || !email) {
+      return res.status(400).json({
+        message: "Verification code and email are required",
+        receivedFields: {
+          code: !!code,
+          email: !!email,
+        },
+      })
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
+    }
+
+    const verification = await verifyEmailCode(email, code)
+
+    if (!verification.isValid) {
+      return res.status(400).json({
+        message: verification.message || "Invalid verification code",
+      })
+    }
+
+    const user = await getUserByEmail(email)
+    if (!user) {
+      return res.status(404).json({ message: "User not found" })
+    }
+
+    const resetToken = jwt.sign({ userId: user.userId, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: "15m",
+    })
 
     res.status(200).json({
-      message: "Phone number verified successfully for password reset",
+      message: "Email verified successfully for password reset",
       resetToken,
       userId: user.userId,
     })
@@ -274,7 +314,6 @@ export const verifyPasswordResetCode = async (req, res) => {
   }
 }
 
-// Complete password reset with new password
 export const completePasswordReset = async (req, res) => {
   try {
     const { resetToken, newPassword } = req.body
@@ -289,7 +328,6 @@ export const completePasswordReset = async (req, res) => {
       })
     }
 
-    // Verify the reset token
     let decoded
     try {
       decoded = jwt.verify(resetToken, process.env.JWT_SECRET)
@@ -299,15 +337,11 @@ export const completePasswordReset = async (req, res) => {
         error: error.message,
       })
     }
-
-    // Get user
     const user = await getUserById(decoded.userId)
     if (!user) {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Update user's password
-    console.log("Updating password for user:", decoded.userId)
     await updateUser(decoded.userId, { password: newPassword })
 
     res.status(200).json({ message: "Password reset successfully" })
@@ -317,51 +351,41 @@ export const completePasswordReset = async (req, res) => {
   }
 }
 
-// Legacy reset password function - can be removed after updating routes
 export const resetPassword = async (req, res) => {
   try {
-    console.log("Reset password request received:", req.body)
+    const { code, email, newPassword } = req.body
 
-    const { sessionInfo, code, phoneNumber, newPassword } = req.body
-
-    if (!sessionInfo || !code || !phoneNumber || !newPassword) {
+    if (!code || !email || !newPassword) {
       return res.status(400).json({
-        message: "Session info, verification code, phone number, and new password are required",
+        message: "Verification code, email, and new password are required",
         receivedFields: {
-          sessionInfo: !!sessionInfo,
           code: !!code,
-          phoneNumber: !!phoneNumber,
+          email: !!email,
           newPassword: !!newPassword,
         },
       })
     }
 
-    // Verify the code with Firebase
-    console.log("Verifying code:", { sessionInfo, code })
-    const verification = await verifyPhone(sessionInfo, code)
-    console.log("Verification result:", verification)
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" })
+    }
+
+    const verification = await verifyEmailCode(email, code)
 
     if (!verification.isValid) {
       return res.status(400).json({
-        message: "Invalid verification code",
-        error: verification.error,
+        message: verification.message || "Invalid verification code",
       })
     }
 
-    // Get user
-    console.log("Getting user by phone number:", phoneNumber)
-    const user = await getUserByPhoneNumber(phoneNumber)
-    console.log("User found:", !!user)
+    const user = await getUserByEmail(email)
 
     if (!user) {
       return res.status(404).json({ message: "User not found" })
     }
 
-    // Hash the password before updating
-    console.log("Updating user password")
     try {
       await updateUser(user.userId, { password: newPassword })
-      console.log("Password updated successfully")
 
       res.status(200).json({ message: "Password reset successfully" })
     } catch (updateError) {

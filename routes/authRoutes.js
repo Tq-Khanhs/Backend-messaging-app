@@ -1,30 +1,27 @@
 import express from "express"
 import {
   requestVerificationCode,
-  verifyPhoneNumber,
+  verifyEmailAddress,
   completeRegistration,
   login,
   requestPasswordResetCode,
   verifyPasswordResetCode,
   completePasswordReset,
-  resetPassword,
 } from "../controllers/authController.js"
 import { validateRequest } from "../middleware/validationMiddleware.js"
 
 const router = express.Router()
 
-router.post("/request-verification", validateRequest(["phoneNumber"]), requestVerificationCode)
+router.post("/request-verification", validateRequest(["email"]), requestVerificationCode)
 
-router.post("/verify-phone", validateRequest(["sessionInfo", "code", "phoneNumber"]), verifyPhoneNumber)
+router.post("/verify-email", validateRequest(["code", "email"]), verifyEmailAddress)
 
-router.post("/register", validateRequest(["phoneNumber", "password", "firebaseUid"]), completeRegistration)
+router.post("/register", validateRequest(["email", "password", "userId"]), completeRegistration)
 
-router.post("/login", validateRequest(["phoneNumber", "password"]), login)
+router.post("/login", validateRequest(["email", "password"]), login)
 
-router.post("/request-password-reset-code", validateRequest(["phoneNumber"]), requestPasswordResetCode)
-router.post("/verify-reset-code", validateRequest(["sessionInfo", "code", "phoneNumber"]), verifyPasswordResetCode)
+router.post("/request-password-reset-code", validateRequest(["email"]), requestPasswordResetCode)
+router.post("/verify-reset-code", validateRequest(["code", "email"]), verifyPasswordResetCode)
 router.post("/complete-password-reset", validateRequest(["resetToken", "newPassword"]), completePasswordReset)
-
-
 
 export default router
