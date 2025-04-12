@@ -29,26 +29,21 @@ export const requestVerificationCode = async (req, res) => {
 
     let result
     try {
-      // Try the primary email service first
       result = await sendVerificationEmail(email)
       console.log(`Primary email service result:`, result)
     } catch (primaryError) {
       console.error("Primary email service failed:", primaryError)
 
-      // If primary fails, try the alternative service
       try {
         console.log("Trying alternative email service...")
         result = await alternativeEmailService.sendVerificationEmail(email)
         console.log(`Alternative email service result:`, result)
       } catch (alternativeError) {
         console.error("Alternative email service also failed:", alternativeError)
-
-        // If both fail in production, throw error
         if (!isDevelopment) {
           throw new Error("Failed to send verification email through both services")
         }
 
-        // In development, create a code anyway
         const code = Math.floor(100000 + Math.random() * 900000).toString()
         result = {
           success: false,
@@ -58,7 +53,6 @@ export const requestVerificationCode = async (req, res) => {
       }
     }
 
-    // In development, return the verification code for testing
     const responseData = {
       message: "Verification code sent successfully to your email",
       email: email.toLowerCase(),
@@ -75,7 +69,6 @@ export const requestVerificationCode = async (req, res) => {
   } catch (error) {
     console.error("Error in requestVerificationCode:", error)
 
-    // If in development mode, still return a success response with a code
     if (isDevelopment) {
       const code = Math.floor(100000 + Math.random() * 900000).toString()
       res.status(200).json({
@@ -109,7 +102,6 @@ export const verifyEmailAddress = async (req, res) => {
       return res.status(400).json({ message: verification.message || "Invalid verification code" })
     }
 
-    // Generate a unique ID for the user
     const userId = uuidv4()
 
     const tempToken = jwt.sign({ email: email.toLowerCase(), userId }, process.env.JWT_SECRET, {
@@ -237,7 +229,6 @@ export const requestPasswordResetCode = async (req, res) => {
 
     const result = await sendVerificationEmail(email)
 
-    // In development, return the verification code for testing
     const responseData = {
       message: "Password reset code sent successfully to your email",
       email: email.toLowerCase(),
@@ -252,7 +243,6 @@ export const requestPasswordResetCode = async (req, res) => {
   } catch (error) {
     console.error("Error in requestPasswordResetCode:", error)
 
-    // If in development mode, still return a success response with a code
     if (isDevelopment) {
       const code = Math.floor(100000 + Math.random() * 900000).toString()
       res.status(200).json({

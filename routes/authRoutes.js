@@ -16,7 +16,7 @@ router.post("/request-verification", validateRequest(["email"]), requestVerifica
 
 router.post("/verify-email", validateRequest(["code", "email"]), verifyEmailAddress)
 
-router.post("/register", validateRequest(["email", "password", "userId"]), completeRegistration)
+router.post("/register", validateRequest(["email", "password", "userId","fullName","birthdate","gender","avatarUrl"]), completeRegistration)
 
 router.post("/login", validateRequest(["email", "password"]), login)
 

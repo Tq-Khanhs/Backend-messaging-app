@@ -6,6 +6,7 @@ import {
   uploadUserAvatar,
   getAvatarUploadUrl,
   confirmAvatarUpload,
+  updatePassword
 } from "../controllers/userController.js"
 import { authenticate } from "../middleware/authMiddleware.js"
 import { validateRequest } from "../middleware/validationMiddleware.js"
@@ -27,6 +28,6 @@ router.post("/avatar", authenticate, upload.single("avatar"), uploadUserAvatar)
 router.post("/avatar-upload-url", authenticate, validateRequest(["fileType"]), getAvatarUploadUrl)
 
 router.post("/confirm-avatar", authenticate, validateRequest(["key"]), confirmAvatarUpload)
-
+router.put("/update-password", authenticate, validateRequest(["currentPassword", "newPassword"]), updatePassword)
 export default router
 

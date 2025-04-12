@@ -20,22 +20,59 @@ export const uploadAvatar = async (userId, fileBuffer, mimeType) => {
   }
 }
 
-export const getAvatarUrl = async (key) => {
+export const getAvatarUrl = async (avatarPath) => {
   try {
-    const { data, error } = await supabaseClient.storage.from(USER_AVATARS_BUCKET).createSignedUrl(key, 3600) // 1 hour expiry
+    // Check if the avatarPath is already a full URL
+    if (avatarPath.startsWith("http")) {
+      return avatarPath
+    }
 
-    if (error) throw error
+    // Determine which bucket to use based on the path
+    let bucket = USER_AVATARS_BUCKET
+
+    // If the path contains "images/" at the beginning, use the IMAGES_BUCKET
+    if (avatarPath.includes("images/")) {
+      bucket = IMAGES_BUCKET
+    }
+
+    console.log(`Getting avatar from bucket: ${bucket}, path: ${avatarPath}`)
+
+    // For IMAGES_BUCKET, we can just return the public URL
+    if (bucket === IMAGES_BUCKET) {
+      const { data } = supabaseClient.storage.from(bucket).getPublicUrl(avatarPath)
+      return data.publicUrl
+    }
+
+    // For USER_AVATARS_BUCKET, create a signed URL
+    const { data, error } = await supabaseClient.storage.from(bucket).createSignedUrl(avatarPath, 3600) // 1 hour expiry
+
+    if (error) {
+      console.warn("Error generating avatar URL:", error)
+      return null
+    }
+
     return data.signedUrl
   } catch (error) {
-    console.error("Error generating avatar URL:", error)
-    throw error
+    console.warn("Error generating avatar URL:", error)
+    return null // Return null instead of throwing an error
   }
 }
 
-
 export const deleteAvatar = async (key) => {
   try {
-    const { error } = await supabaseClient.storage.from(USER_AVATARS_BUCKET).remove([key])
+    // Skip deletion if it's a full URL (legacy avatar)
+    if (key.startsWith("http")) {
+      console.log("Skipping deletion of legacy avatar URL:", key)
+      return
+    }
+
+    // Determine which bucket to use
+    let bucket = USER_AVATARS_BUCKET
+    if (key.includes("images/")) {
+      bucket = IMAGES_BUCKET
+    }
+
+    const { error } = await supabaseClient.storage.from(bucket).remove([key])
 
     if (error) throw error
   } catch (error) {
@@ -62,6 +99,7 @@ export const generatePresignedUploadUrl = async (userId, fileType) => {
     throw error
   }
 }
+
 export const uploadImage = async (fileBuffer, mimeType, folder = "general") => {
   const fileExt = mimeType.split("/")[1]
   const fileName = `${folder}/${uuidv4()}.${fileExt}`

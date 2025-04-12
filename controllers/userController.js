@@ -1,4 +1,4 @@
-import { getUserById, updateUser } from "../models/userModel.js"
+import { getUserById, updateUser, verifyPassword } from "../models/userModel.js"
 import {
   uploadAvatar,
   getAvatarUrl,
@@ -19,7 +19,16 @@ export const getUserProfile = async (req, res) => {
 
     let avatarUrl = null
     if (user.avatarUrl) {
-      avatarUrl = await getAvatarUrl(user.avatarUrl)
+      try {
+   
+        if (user.avatarUrl.startsWith("http")) {
+          avatarUrl = user.avatarUrl
+        } else {
+          avatarUrl = await getAvatarUrl(user.avatarUrl)
+        }
+      } catch (avatarError) {
+        console.warn("Error fetching avatar URL:", avatarError)
+      }
     }
 
     res.status(200).json({
@@ -28,7 +37,7 @@ export const getUserProfile = async (req, res) => {
       fullName: user.fullName,
       birthdate: user.birthdate,
       gender: user.gender,
-      avatarUrl,
+      avatarUrl: user.avatarUrl,
     })
   } catch (error) {
     console.error("Error in getUserProfile:", error)
@@ -63,7 +72,16 @@ export const updateUserProfile = async (req, res) => {
 
     let avatarUrl = null
     if (updatedUser.avatarUrl) {
-      avatarUrl = await getAvatarUrl(updatedUser.avatarUrl)
+      try {
+        // If the avatarUrl is already a full URL, use it directly
+        if (updatedUser.avatarUrl.startsWith("http")) {
+          avatarUrl = updatedUser.avatarUrl
+        } else {
+          avatarUrl = await getAvatarUrl(updatedUser.avatarUrl)
+        }
+      } catch (avatarError) {
+        console.warn("Error fetching avatar URL:", avatarError)
+      }
     }
 
     res.status(200).json({
@@ -163,6 +181,40 @@ export const confirmAvatarUpload = async (req, res) => {
     })
   } catch (error) {
     console.error("Error in confirmAvatarUpload:", error)
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+}
+
+export const updatePassword = async (req, res) => {
+  try {
+    const userId = req.user.userId
+    const { currentPassword, newPassword } = req.body
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message: "Current password and new password are required",
+      })
+    }
+
+    const user = await getUserById(userId)
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" })
+    }
+
+    // Verify current password
+    const isMatch = await verifyPassword(currentPassword, user.password)
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Current password is incorrect" })
+    }
+
+    // Update with new password
+    await updateUser(userId, { password: newPassword })
+
+    res.status(200).json({ message: "Password updated successfully" })
+  } catch (error) {
+    console.error("Error in updatePassword:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }

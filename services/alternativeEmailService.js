@@ -4,7 +4,7 @@ import { createVerificationCode, verifyCode } from "../models/verificationModel.
 
 dotenv.config()
 
-// Create a transporter using Gmail service
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -18,10 +18,8 @@ const transporter = nodemailer.createTransport({
 
 export const sendVerificationEmail = async (email) => {
   try {
-    // Generate a 6-digit verification code
     const verificationCode = await createVerificationCode(email)
 
-    // Email content
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -40,7 +38,6 @@ export const sendVerificationEmail = async (email) => {
       text: `Your verification code is: ${verificationCode}. This code will expire in 10 minutes.`,
     }
 
-    // In development mode, just log the code and don't actually send email
     if (process.env.NODE_ENV === "development" && process.env.SKIP_EMAIL_SENDING === "true") {
       console.log(`[DEV MODE] Email to ${email}: Verification code: ${verificationCode}`)
       return {
@@ -50,7 +47,6 @@ export const sendVerificationEmail = async (email) => {
       }
     }
 
-    // Send the email
     console.log(`Attempting to send email to ${email} using alternative service...`)
     const info = await transporter.sendMail(mailOptions)
 
@@ -64,7 +60,6 @@ export const sendVerificationEmail = async (email) => {
   } catch (error) {
     console.error("Error sending verification email:", error)
 
-    // If we're in development and there's an error, still return the code
     if (process.env.NODE_ENV === "development") {
       const verificationCode = await createVerificationCode(email)
       console.log(`[DEV MODE] Error sending email, but generated code for ${email}: ${verificationCode}`)
