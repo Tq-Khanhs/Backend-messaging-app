@@ -13,23 +13,23 @@ export const getUserProfile = async (req, res) => {
 
     const user = await getUserById(userId)
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" })
-    }
+    // if (!user) {
+    //   return res.status(404).json({ message: "User not found" })
+    // }
 
-    let avatarUrl = null
-    if (user.avatarUrl) {
-      try {
+    // let avatarUrl = null
+    // if (user.avatarUrl) {
+    //   try {
    
-        if (user.avatarUrl.startsWith("http")) {
-          avatarUrl = user.avatarUrl
-        } else {
-          avatarUrl = await getAvatarUrl(user.avatarUrl)
-        }
-      } catch (avatarError) {
-        console.warn("Error fetching avatar URL:", avatarError)
-      }
-    }
+    //     if (user.avatarUrl.startsWith("http")) {
+    //       avatarUrl = user.avatarUrl
+    //     } else {
+    //       avatarUrl = await getAvatarUrl(user.avatarUrl)
+    //     }
+    //   } catch (avatarError) {
+    //     console.warn("Error fetching avatar URL:", avatarError)
+    //   }
+    // }
 
     res.status(200).json({
       userId: user.userId,

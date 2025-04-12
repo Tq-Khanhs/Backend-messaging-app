@@ -1,6 +1,24 @@
 import mongoose from "mongoose"
 import { VERIFICATION_CODES_COLLECTION } from "../config/mongodbConfig.js"
 
+// At the top of the file, after the imports
+// Add this code to drop the index when the app starts
+
+const dropPhoneNumberIndexIfExists = async () => {
+  try {
+    const indexes = await mongoose.connection.collection(VERIFICATION_CODES_COLLECTION).indexes()
+    const hasPhoneNumberIndex = indexes.some((index) => index.name === "phoneNumber_1")
+
+    if (hasPhoneNumberIndex) {
+      console.log("Dropping phoneNumber_1 index from verification_codes collection...")
+      await mongoose.connection.collection(VERIFICATION_CODES_COLLECTION).dropIndex("phoneNumber_1")
+      console.log("Index dropped successfully")
+    }
+  } catch (error) {
+    console.error("Error checking/dropping phoneNumber index:", error)
+  }
+}
+
 const verificationCodeSchema = new mongoose.Schema(
   {
     email: {
@@ -33,20 +51,32 @@ const verificationCodeSchema = new mongoose.Schema(
 
 const VerificationCode = mongoose.model(VERIFICATION_CODES_COLLECTION, verificationCodeSchema)
 
-export const createVerificationCode = async (email) => {
+// Add this line after the VerificationCode model is defined
+dropPhoneNumberIndexIfExists().catch(console.error)
+
+// First, check if the schema has a phoneNumber field with a unique index
+// If it does, we need to modify the schema or ensure phoneNumber is always provided
+
+// In the createVerificationCode function, add a check for phoneNumber
+export const createVerificationCode = async (email, phoneNumber = undefined) => {
   try {
     const code = Math.floor(100000 + Math.random() * 900000).toString()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiration
 
-    await VerificationCode.findOneAndUpdate(
-      { email: email.toLowerCase() },
-      {
-        code,
-        attempts: 0,
-        expiresAt,
-      },
-      { upsert: true, new: true },
-    )
+    // Create update data with conditional phoneNumber field
+    const updateData = {
+      code,
+      attempts: 0,
+      expiresAt,
+    }
+
+    // Only include phoneNumber if it's provided
+    if (phoneNumber !== undefined) {
+      updateData.phoneNumber = phoneNumber
+    }
+
+    // Find by email only, don't include phoneNumber in the query
+    await VerificationCode.findOneAndUpdate({ email: email.toLowerCase() }, updateData, { upsert: true, new: true })
 
     return code
   } catch (error) {
