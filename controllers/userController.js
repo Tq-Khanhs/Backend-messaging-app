@@ -13,23 +13,23 @@ export const getUserProfile = async (req, res) => {
 
     const user = await getUserById(userId)
 
-    // if (!user) {
-    //   return res.status(404).json({ message: "User not found" })
-    // }
+    if (!user) {
+      return res.status(404).json({ message: "User not found" })
+    }
 
-    // let avatarUrl = null
-    // if (user.avatarUrl) {
-    //   try {
+    let avatarUrl = null
+    if (user.avatarUrl) {
+      try {
    
-    //     if (user.avatarUrl.startsWith("http")) {
-    //       avatarUrl = user.avatarUrl
-    //     } else {
-    //       avatarUrl = await getAvatarUrl(user.avatarUrl)
-    //     }
-    //   } catch (avatarError) {
-    //     console.warn("Error fetching avatar URL:", avatarError)
-    //   }
-    // }
+        if (user.avatarUrl.startsWith("http")) {
+          avatarUrl = user.avatarUrl
+        } else {
+          avatarUrl = await getAvatarUrl(user.avatarUrl)
+        }
+      } catch (avatarError) {
+        console.warn("Error fetching avatar URL:", avatarError)
+      }
+    }
 
     res.status(200).json({
       userId: user.userId,
@@ -54,9 +54,9 @@ export const updateUserProfile = async (req, res) => {
       fullName,
       birthdate,
       gender,
+      avatarUrl
     }
 
-    // If email is being updated, validate it
     if (email) {
       if (!validateEmail(email)) {
         return res.status(400).json({ message: "Invalid email format" })
@@ -73,7 +73,6 @@ export const updateUserProfile = async (req, res) => {
     let avatarUrl = null
     if (updatedUser.avatarUrl) {
       try {
-        // If the avatarUrl is already a full URL, use it directly
         if (updatedUser.avatarUrl.startsWith("http")) {
           avatarUrl = updatedUser.avatarUrl
         } else {

@@ -6,6 +6,8 @@ import dotenv from "dotenv"
 import authRoutes from "./routes/authRoutes.js"
 import userRoutes from "./routes/userRoutes.js"
 import imageRoutes from "./routes/imageRoutes.js"
+import friendRoutes from "./routes/friendRoutes.js"
+import messageRoutes from "./routes/messageRoutes.js"
 import { errorHandler } from "./middleware/errorMiddleware.js"
 import { initializeStorage } from "./config/supabaseConfig.js"
 import { connectDB } from "./config/mongodbConfig.js"
@@ -28,6 +30,8 @@ app.use(morgan("dev"))
 app.use("/api/auth", authRoutes)
 app.use("/api/users", userRoutes)
 app.use("/api/images", imageRoutes)
+app.use("/api/friends", friendRoutes)
+app.use("/api/messages", messageRoutes)
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" })

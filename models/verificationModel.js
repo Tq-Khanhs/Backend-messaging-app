@@ -1,9 +1,6 @@
 import mongoose from "mongoose"
 import { VERIFICATION_CODES_COLLECTION } from "../config/mongodbConfig.js"
 
-// At the top of the file, after the imports
-// Add this code to drop the index when the app starts
-
 const dropPhoneNumberIndexIfExists = async () => {
   try {
     const indexes = await mongoose.connection.collection(VERIFICATION_CODES_COLLECTION).indexes()
@@ -54,10 +51,6 @@ const VerificationCode = mongoose.model(VERIFICATION_CODES_COLLECTION, verificat
 // Add this line after the VerificationCode model is defined
 dropPhoneNumberIndexIfExists().catch(console.error)
 
-// First, check if the schema has a phoneNumber field with a unique index
-// If it does, we need to modify the schema or ensure phoneNumber is always provided
-
-// In the createVerificationCode function, add a check for phoneNumber
 export const createVerificationCode = async (email, phoneNumber = undefined) => {
   try {
     const code = Math.floor(100000 + Math.random() * 900000).toString()
