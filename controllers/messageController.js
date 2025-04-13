@@ -21,7 +21,6 @@ import {
       const userId = req.user.userId
   
       const conversations = await getUserConversations(userId)
-  
 
       const conversationsWithDetails = await Promise.all(
         conversations.map(async (conversation) => {
@@ -29,13 +28,12 @@ import {
           const otherParticipantId = conversation.participants.find((id) => id !== userId)
           const otherParticipant = await getUserById(otherParticipantId)
   
-    
           let lastMessage = null
           if (conversation.lastMessageId) {
             lastMessage = await getMessageById(conversation.lastMessageId)
           }
   
-
+        
           const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
   
           return {
@@ -78,7 +76,7 @@ import {
       const { conversationId } = req.params
       const userId = req.user.userId
       const { before, limit = 50 } = req.query
-
+  
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -114,7 +112,6 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
-  
 
   export const getOrStartConversation = async (req, res) => {
     try {
@@ -124,12 +121,13 @@ import {
       if (userId === otherUserId) {
         return res.status(400).json({ message: "Cannot start a conversation with yourself" })
       }
+  
 
       const otherUser = await getUserById(otherUserId)
       if (!otherUser) {
         return res.status(404).json({ message: "User not found" })
       }
-  
+ 
       const areFriends = await checkFriendship(userId, otherUserId)
       if (!areFriends) {
         return res.status(403).json({ message: "You must be friends to start a conversation" })
@@ -162,7 +160,7 @@ import {
       if (!content || content.trim() === "") {
         return res.status(400).json({ message: "Message content cannot be empty" })
       }
-  
+
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -174,6 +172,7 @@ import {
       }
   
       const receiverId = conversation.participants.find((id) => id !== senderId)
+  
       const message = await createMessage(conversationId, senderId, receiverId, "text", content)
   
       res.status(201).json({
@@ -201,7 +200,7 @@ import {
       if (!emoji) {
         return res.status(400).json({ message: "Emoji cannot be empty" })
       }
-  
+
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -212,7 +211,6 @@ import {
         return res.status(403).json({ message: "You are not a participant in this conversation" })
       }
   
-
       const receiverId = conversation.participants.find((id) => id !== senderId)
 
       const message = await createMessage(conversationId, senderId, receiverId, "emoji", emoji)
@@ -233,8 +231,6 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
-  
-
   export const sendImageMessage = async (req, res) => {
     try {
       const { conversationId } = req.body
@@ -243,7 +239,7 @@ import {
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ message: "No images uploaded" })
       }
-
+  
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -255,6 +251,8 @@ import {
       }
 
       const receiverId = conversation.participants.find((id) => id !== senderId)
+  
+
       const attachments = await Promise.all(
         req.files.map(async (file) => {
           const result = await uploadImage(file.buffer, file.mimetype, "messages")
@@ -266,8 +264,10 @@ import {
           }
         }),
       )
-  
+
       const messageType = attachments.length > 1 ? "imageGroup" : "image"
+  
+
       const message = await createMessage(conversationId, senderId, receiverId, messageType, "", attachments)
   
       res.status(201).json({
@@ -286,6 +286,8 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
+  
+
   export const sendFileMessage = async (req, res) => {
     try {
       const { conversationId } = req.body
@@ -295,6 +297,7 @@ import {
         return res.status(400).json({ message: "No file uploaded" })
       }
   
+
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -305,18 +308,21 @@ import {
         return res.status(403).json({ message: "You are not a participant in this conversation" })
       }
   
+
       const receiverId = conversation.participants.find((id) => id !== senderId)
-  
+
       const result = await uploadImage(req.file.buffer, req.file.mimetype, "files")
+
+      const attachments = [
+        {
+          url: result.url,
+          type: req.file.mimetype,
+          name: req.file.originalname,
+          size: req.file.size,
+        },
+      ]
   
-      const attachment = {
-        url: result.url,
-        type: req.file.mimetype,
-        name: req.file.originalname,
-        size: req.file.size,
-      }
-  
-      const message = await createMessage(conversationId, senderId, receiverId, "file", "", [attachment])
+      const message = await createMessage(conversationId, senderId, receiverId, "file", "", attachments)
   
       res.status(201).json({
         message: "File sent successfully",
@@ -348,6 +354,7 @@ import {
         return res.status(400).json({ message: "Uploaded file is not a video" })
       }
   
+
       const conversation = await getConversationById(conversationId)
   
       if (!conversation) {
@@ -358,18 +365,22 @@ import {
         return res.status(403).json({ message: "You are not a participant in this conversation" })
       }
   
+
       const receiverId = conversation.participants.find((id) => id !== senderId)
   
+
       const result = await uploadImage(req.file.buffer, req.file.mimetype, "videos")
   
-      const attachment = {
-        url: result.url,
-        type: req.file.mimetype,
-        name: req.file.originalname,
-        size: req.file.size,
-      }
+      const attachments = [
+        {
+          url: result.url,
+          type: req.file.mimetype,
+          name: req.file.originalname,
+          size: req.file.size,
+        },
+      ]
   
-      const message = await createMessage(conversationId, senderId, receiverId, "video", "", [attachment])
+      const message = await createMessage(conversationId, senderId, receiverId, "video", "", attachments)
   
       res.status(201).json({
         message: "Video sent successfully",
@@ -387,7 +398,6 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
-  
   export const markAsRead = async (req, res) => {
     try {
       const { messageId } = req.params
@@ -517,7 +527,6 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
-  
   export const getUnreadCount = async (req, res) => {
     try {
       const userId = req.user.userId

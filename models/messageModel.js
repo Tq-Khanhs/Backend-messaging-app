@@ -2,7 +2,6 @@ import mongoose from "mongoose"
 import { v4 as uuidv4 } from "uuid"
 import { updateFriendshipLastInteraction } from "./friendModel.js"
 
-
 const messageSchema = new mongoose.Schema(
   {
     messageId: {
@@ -37,11 +36,11 @@ const messageSchema = new mongoose.Schema(
     },
     attachments: [
       {
-        url: String,
-        type: String,
-        name: String,
-        size: Number,
-        thumbnailUrl: String,
+        url: { type: String },
+        type: { type: String },
+        name: { type: String },
+        size: { type: Number },
+        thumbnailUrl: { type: String },
       },
     ],
     isDeleted: {
@@ -107,6 +106,7 @@ export const getOrCreateConversation = async (user1Id, user2Id) => {
     let conversation = await Conversation.findOne({
       participants: { $all: participants, $size: 2 },
     })
+
     if (!conversation) {
       conversation = new Conversation({
         participants,
@@ -170,6 +170,7 @@ export const createMessage = async (conversationId, senderId, receiverId, type, 
 
     await message.save()
 
+  
     await updateConversationLastMessage(conversationId, message.messageId)
 
     await updateFriendshipLastInteraction(senderId, receiverId)
@@ -317,6 +318,7 @@ export const forwardMessage = async (originalMessageId, conversationId, senderId
     })
 
     await newMessage.save()
+
     await updateConversationLastMessage(conversationId, newMessage.messageId)
     await updateFriendshipLastInteraction(senderId, receiverId)
 
