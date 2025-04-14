@@ -6,6 +6,8 @@ import {
   generatePresignedUploadUrl,
 } from "../services/supabaseStorageService.js"
 import { validateEmail } from "../services/emailService.js"
+import { checkFriendship, getFriendRequests, getSentFriendRequests } from "../models/friendModel.js"
+import mongoose from "mongoose"
 
 export const getUserProfile = async (req, res) => {
   try {
@@ -41,6 +43,83 @@ export const getUserProfile = async (req, res) => {
     })
   } catch (error) {
     console.error("Error in getUserProfile:", error)
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+}
+
+export const searchUsers = async (req, res) => {
+  try {
+    const { query } = req.query
+    const currentUserId = req.user.userId
+
+    if (!query || query.trim() === "") {
+      return res.status(400).json({ message: "Search query is required" })
+    }
+
+    const searchQuery = {
+      $or: [{ email: { $regex: query, $options: "i" } }, { fullName: { $regex: query, $options: "i" } }],
+      userId: { $ne: currentUserId },
+      isActive: true,
+    }
+
+    const User = mongoose.model("users")
+
+    const users = await User.find(searchQuery).limit(20).lean()
+
+    const sentRequests = await getSentFriendRequests(currentUserId)
+    const sentRequestsMap = new Map(sentRequests.map((req) => [req.receiverId, req.requestId]))
+
+    const receivedRequests = await getFriendRequests(currentUserId)
+    const receivedRequestsMap = new Map(receivedRequests.map((req) => [req.senderId, req.requestId]))
+
+    const usersWithFriendshipStatus = await Promise.all(
+      users.map(async (user) => {
+        let friendshipStatus = "not_friends"
+        let requestId = null
+
+        const areFriends = await checkFriendship(currentUserId, user.userId)
+        if (areFriends) {
+          friendshipStatus = "friends"
+        }
+        else if (sentRequestsMap.has(user.userId)) {
+          friendshipStatus = "request_sent"
+          requestId = sentRequestsMap.get(user.userId)
+        }
+        else if (receivedRequestsMap.has(user.userId)) {
+          friendshipStatus = "request_received"
+          requestId = receivedRequestsMap.get(user.userId)
+        }
+
+        let avatarUrl = null
+        if (user.avatarUrl) {
+          try {
+            if (user.avatarUrl.startsWith("http")) {
+              avatarUrl = user.avatarUrl
+            } else {
+              avatarUrl = await getAvatarUrl(user.avatarUrl)
+            }
+          } catch (avatarError) {
+            console.warn("Error fetching avatar URL:", avatarError)
+          }
+        }
+
+        return {
+          userId: user.userId,
+          email: user.email,
+          fullName: user.fullName,
+          avatarUrl: avatarUrl,
+          friendshipStatus,
+          requestId,
+        }
+      }),
+    )
+
+    res.status(200).json({
+      message: "Users found",
+      users: usersWithFriendshipStatus,
+    })
+  } catch (error) {
+    console.error("Error in searchUsers:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }

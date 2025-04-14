@@ -6,7 +6,8 @@ import {
   uploadUserAvatar,
   getAvatarUploadUrl,
   confirmAvatarUpload,
-  updatePassword
+  updatePassword,
+  searchUsers
 } from "../controllers/userController.js"
 import { authenticate } from "../middleware/authMiddleware.js"
 import { validateRequest } from "../middleware/validationMiddleware.js"
@@ -29,5 +30,6 @@ router.post("/avatar-upload-url", authenticate, validateRequest(["fileType"]), g
 
 router.post("/confirm-avatar", authenticate, validateRequest(["key"]), confirmAvatarUpload)
 router.put("/update-password", authenticate, validateRequest(["currentPassword", "newPassword"]), updatePassword)
+router.get("/search", authenticate, searchUsers)
 export default router
 
