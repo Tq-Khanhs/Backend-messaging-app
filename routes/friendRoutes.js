@@ -7,15 +7,14 @@ import {
   getFriends,
   removeFriend,
   checkFriendshipStatus,
+  cancelFriendRequest,
 } from "../controllers/friendController.js"
 import { authenticate } from "../middleware/authMiddleware.js"
 import { validateRequest } from "../middleware/validationMiddleware.js"
 
 const router = express.Router()
 
-
 router.use(authenticate)
-
 
 router.post("/requests", validateRequest(["receiverId"]), sendFriendRequest)
 router.get("/requests/received", getReceivedFriendRequests)
@@ -24,5 +23,6 @@ router.post("/requests/respond", validateRequest(["requestId", "action"]), respo
 router.get("/", getFriends)
 router.delete("/:friendId", removeFriend)
 router.get("/status/:userId", checkFriendshipStatus)
+router.delete("/requests/:requestId", cancelFriendRequest)
 
 export default router

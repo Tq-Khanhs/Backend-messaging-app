@@ -264,4 +264,36 @@ import {
       res.status(500).json({ message: "Server error", error: error.message })
     }
   }
+
+
+  export const cancelFriendRequest = async (req, res) => {
+    try {
+      const { requestId } = req.params
+      const userId = req.user.userId
   
+      const friendRequest = await getFriendRequestById(requestId)
+  
+      if (!friendRequest) {
+        return res.status(404).json({ message: "Friend request not found" })
+      }
+  
+      if (friendRequest.senderId !== userId) {
+        return res.status(403).json({ message: "You can only cancel your own friend requests" })
+      }
+  
+      if (friendRequest.status !== "pending") {
+        return res.status(400).json({ message: "Only pending friend requests can be canceled" })
+      }
+  
+   
+      await FriendRequest.deleteOne({ requestId })
+  
+      res.status(200).json({
+        message: "Friend request canceled successfully",
+        requestId: friendRequest.requestId,
+      })
+    } catch (error) {
+      console.error("Error in cancelFriendRequest:", error)
+      res.status(500).json({ message: "Server error", error: error.message })
+    }
+  }

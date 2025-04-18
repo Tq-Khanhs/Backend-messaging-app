@@ -93,7 +93,6 @@ const conversationSchema = new mongoose.Schema(
   },
 )
 
-
 conversationSchema.index({ participants: 1 }, { unique: true })
 
 export const Message = mongoose.model("Message", messageSchema)
@@ -101,6 +100,11 @@ export const Conversation = mongoose.model("Conversation", conversationSchema)
 
 export const getOrCreateConversation = async (user1Id, user2Id) => {
   try {
+    if (!user1Id || !user2Id) {
+      console.error("Missing user IDs for conversation:", { user1Id, user2Id })
+      throw new Error("Both user IDs are required to create a conversation")
+    }
+
     const participants = [user1Id, user2Id].sort()
 
     let conversation = await Conversation.findOne({
@@ -159,6 +163,15 @@ export const updateConversationLastMessage = async (conversationId, messageId) =
 
 export const createMessage = async (conversationId, senderId, receiverId, type, content, attachments = []) => {
   try {
+    if (!conversationId || !senderId || !receiverId) {
+      console.error("Missing required parameters for message creation:", {
+        conversationId,
+        senderId,
+        receiverId,
+      })
+      throw new Error("Conversation ID, sender ID, and receiver ID are required")
+    }
+
     const message = new Message({
       conversationId,
       senderId,
@@ -170,7 +183,6 @@ export const createMessage = async (conversationId, senderId, receiverId, type, 
 
     await message.save()
 
-  
     await updateConversationLastMessage(conversationId, message.messageId)
 
     await updateFriendshipLastInteraction(senderId, receiverId)
@@ -329,14 +341,21 @@ export const forwardMessage = async (originalMessageId, conversationId, senderId
   }
 }
 
-export const getUnreadMessageCount = async (userId) => {
+export const getUnreadMessageCount = async (userId, conversationId = null) => {
   try {
-    return await Message.countDocuments({
+    const query = {
       receiverId: userId,
       readAt: null,
       isDeleted: false,
       isRecalled: false,
-    })
+    }
+
+    // If conversationId is provided, add it to the query
+    if (conversationId) {
+      query.conversationId = conversationId
+    }
+
+    return await Message.countDocuments(query)
   } catch (error) {
     console.error("Error getting unread message count:", error)
     throw error
