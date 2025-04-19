@@ -160,6 +160,7 @@ export const getOrStartConversation = async (req, res) => {
       return res.status(403).json({ message: "You must be friends to start a conversation" })
     }
 
+    // Create a new conversation
     const conversation = await getOrCreateConversation(userId, otherUserId)
 
     if (!conversation) {

@@ -93,7 +93,7 @@ const conversationSchema = new mongoose.Schema(
   },
 )
 
-conversationSchema.index({ participants: 1 }, { unique: true })
+conversationSchema.index({ participants: 1 })
 
 export const Message = mongoose.model("Message", messageSchema)
 export const Conversation = mongoose.model("Conversation", conversationSchema)
@@ -107,6 +107,7 @@ export const getOrCreateConversation = async (user1Id, user2Id) => {
 
     const participants = [user1Id, user2Id].sort()
 
+  
     let conversation = await Conversation.findOne({
       participants: { $all: participants, $size: 2 },
     })

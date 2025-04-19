@@ -64,9 +64,9 @@ const friendshipSchema = new mongoose.Schema(
 )
 
 
-friendshipSchema.index({ user1Id: 1, user2Id: 1 }, { unique: true })
+friendshipSchema.index({ user1Id: 1, user2Id: 1 })
 
-friendRequestSchema.index({ senderId: 1, receiverId: 1 }, { unique: true })
+friendRequestSchema.index({ senderId: 1, receiverId: 1 })
 
 export const FriendRequest = mongoose.model("FriendRequest", friendRequestSchema)
 export const Friendship = mongoose.model("Friendship", friendshipSchema)
