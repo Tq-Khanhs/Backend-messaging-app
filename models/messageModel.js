@@ -22,12 +22,11 @@ const messageSchema = new mongoose.Schema(
     },
     receiverId: {
       type: String,
-      required: true,
       ref: "User",
     },
     type: {
       type: String,
-      enum: ["text", "image", "file", "video", "emoji", "imageGroup", "deleted", "recalled"],
+      enum: ["text", "image", "file", "video", "emoji", "imageGroup", "deleted", "recalled", "system"],
       default: "text",
     },
     content: {
@@ -51,6 +50,12 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    readBy: [
+      {
+        userId: { type: String },
+        readAt: { type: Date, default: Date.now },
+      },
+    ],
     readAt: {
       type: Date,
       default: null,
@@ -59,6 +64,17 @@ const messageSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    replyTo: {
+      type: String,
+      ref: "Message",
+      default: null,
+    },
+    mentions: [
+      {
+        userId: { type: String },
+        name: { type: String },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -79,6 +95,10 @@ const conversationSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    isGroup: {
+      type: Boolean,
+      default: false,
+    },
     lastMessageId: {
       type: String,
       default: null,
@@ -93,7 +113,9 @@ const conversationSchema = new mongoose.Schema(
   },
 )
 
+// Cập nhật index để hỗ trợ nhóm
 conversationSchema.index({ participants: 1 })
+conversationSchema.index({ isGroup: 1 })
 
 export const Message = mongoose.model("Message", messageSchema)
 export const Conversation = mongoose.model("Conversation", conversationSchema)
@@ -107,14 +129,15 @@ export const getOrCreateConversation = async (user1Id, user2Id) => {
 
     const participants = [user1Id, user2Id].sort()
 
-  
     let conversation = await Conversation.findOne({
       participants: { $all: participants, $size: 2 },
+      isGroup: false,
     })
 
     if (!conversation) {
       conversation = new Conversation({
         participants,
+        isGroup: false,
       })
       await conversation.save()
     }
@@ -162,31 +185,62 @@ export const updateConversationLastMessage = async (conversationId, messageId) =
   }
 }
 
-export const createMessage = async (conversationId, senderId, receiverId, type, content, attachments = []) => {
+export const createMessage = async (
+  conversationId,
+  senderId,
+  receiverId,
+  type,
+  content,
+  attachments = [],
+  options = {},
+) => {
   try {
-    if (!conversationId || !senderId || !receiverId) {
+    if (!conversationId || !senderId) {
       console.error("Missing required parameters for message creation:", {
         conversationId,
         senderId,
-        receiverId,
       })
-      throw new Error("Conversation ID, sender ID, and receiver ID are required")
+      throw new Error("Conversation ID and sender ID are required")
     }
 
-    const message = new Message({
+    const conversation = await getConversationById(conversationId)
+    if (!conversation) {
+      throw new Error("Conversation not found")
+    }
+
+    const messageData = {
       conversationId,
       senderId,
-      receiverId,
       type,
       content,
       attachments,
-    })
+    }
+
+    // Nếu là tin nhắn trả lời
+    if (options.replyTo) {
+      messageData.replyTo = options.replyTo
+    }
+
+    // Nếu là tin nhắn có đề cập
+    if (options.mentions && options.mentions.length > 0) {
+      messageData.mentions = options.mentions
+    }
+
+    // Nếu là tin nhắn nhóm, không cần receiverId
+    if (!conversation.isGroup && receiverId) {
+      messageData.receiverId = receiverId
+    }
+
+    const message = new Message(messageData)
 
     await message.save()
 
     await updateConversationLastMessage(conversationId, message.messageId)
 
-    await updateFriendshipLastInteraction(senderId, receiverId)
+    // Cập nhật tương tác cuối cùng giữa bạn bè (chỉ cho chat 1-1)
+    if (!conversation.isGroup && receiverId) {
+      await updateFriendshipLastInteraction(senderId, receiverId)
+    }
 
     return message
   } catch (error) {
@@ -219,9 +273,26 @@ export const getConversationMessages = async (conversationId, limit = 50, before
   }
 }
 
-export const markMessageAsRead = async (messageId) => {
+export const markMessageAsRead = async (messageId, userId) => {
   try {
-    return await Message.findOneAndUpdate({ messageId }, { readAt: new Date() }, { new: true })
+    // Kiểm tra xem người dùng đã đọc tin nhắn chưa
+    const message = await Message.findOne({
+      messageId,
+      "readBy.userId": { $ne: userId },
+    })
+
+    if (!message) {
+      return null // Tin nhắn không tồn tại hoặc đã được đọc
+    }
+
+    return await Message.findOneAndUpdate(
+      { messageId },
+      {
+        $push: { readBy: { userId, readAt: new Date() } },
+        $set: { readAt: new Date() }, // Giữ lại để tương thích ngược
+      },
+      { new: true },
+    )
   } catch (error) {
     console.error("Error marking message as read:", error)
     throw error
@@ -233,10 +304,13 @@ export const markConversationAsRead = async (conversationId, userId) => {
     return await Message.updateMany(
       {
         conversationId,
-        receiverId: userId,
-        readAt: null,
+        senderId: { $ne: userId },
+        "readBy.userId": { $ne: userId },
       },
-      { readAt: new Date() },
+      {
+        $push: { readBy: { userId, readAt: new Date() } },
+        $set: { readAt: new Date() }, // Giữ lại để tương thích ngược
+      },
     )
   } catch (error) {
     console.error("Error marking conversation as read:", error)
@@ -308,7 +382,7 @@ export const recallMessage = async (messageId, userId) => {
   }
 }
 
-export const forwardMessage = async (originalMessageId, conversationId, senderId, receiverId) => {
+export const forwardMessage = async (originalMessageId, conversationId, senderId, receiverId = null) => {
   try {
     const originalMessage = await Message.findOne({ messageId: originalMessageId })
 
@@ -320,10 +394,15 @@ export const forwardMessage = async (originalMessageId, conversationId, senderId
       throw new Error("Cannot forward a deleted or recalled message")
     }
 
+    const conversation = await getConversationById(conversationId)
+    if (!conversation) {
+      throw new Error("Conversation not found")
+    }
+
     const newMessage = new Message({
       conversationId,
       senderId,
-      receiverId,
+      receiverId: conversation.isGroup ? null : receiverId,
       type: originalMessage.type,
       content: originalMessage.content,
       attachments: originalMessage.attachments,
@@ -333,7 +412,11 @@ export const forwardMessage = async (originalMessageId, conversationId, senderId
     await newMessage.save()
 
     await updateConversationLastMessage(conversationId, newMessage.messageId)
-    await updateFriendshipLastInteraction(senderId, receiverId)
+
+    // Cập nhật tương tác cuối cùng giữa bạn bè (chỉ cho chat 1-1)
+    if (!conversation.isGroup && receiverId) {
+      await updateFriendshipLastInteraction(senderId, receiverId)
+    }
 
     return newMessage
   } catch (error) {
@@ -345,20 +428,107 @@ export const forwardMessage = async (originalMessageId, conversationId, senderId
 export const getUnreadMessageCount = async (userId, conversationId = null) => {
   try {
     const query = {
-      receiverId: userId,
-      readAt: null,
+      senderId: { $ne: userId },
+      "readBy.userId": { $ne: userId },
       isDeleted: false,
       isRecalled: false,
     }
 
-    // If conversationId is provided, add it to the query
+    // Nếu conversationId được cung cấp, thêm vào query
     if (conversationId) {
       query.conversationId = conversationId
+    } else {
+      // Lấy tất cả các cuộc trò chuyện mà người dùng tham gia
+      const conversations = await Conversation.find({ participants: userId })
+      query.conversationId = { $in: conversations.map((conv) => conv.conversationId) }
     }
 
     return await Message.countDocuments(query)
   } catch (error) {
     console.error("Error getting unread message count:", error)
+    throw error
+  }
+}
+
+// Tạo tin nhắn hệ thống trong nhóm
+export const createSystemMessage = async (conversationId, content) => {
+  try {
+    const message = new Message({
+      conversationId,
+      senderId: "system",
+      type: "system",
+      content,
+    })
+
+    await message.save()
+    await updateConversationLastMessage(conversationId, message.messageId)
+
+    return message
+  } catch (error) {
+    console.error("Error creating system message:", error)
+    throw error
+  }
+}
+
+// Tạo tin nhắn trả lời
+export const createReplyMessage = async (
+  conversationId,
+  senderId,
+  replyToMessageId,
+  content,
+  type = "text",
+  attachments = [],
+) => {
+  try {
+    const replyToMessage = await Message.findOne({ messageId: replyToMessageId })
+    if (!replyToMessage) {
+      throw new Error("Original message not found")
+    }
+
+    const conversation = await getConversationById(conversationId)
+    if (!conversation) {
+      throw new Error("Conversation not found")
+    }
+
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
+    }
+
+    return await createMessage(conversationId, senderId, receiverId, type, content, attachments, {
+      replyTo: replyToMessageId,
+    })
+  } catch (error) {
+    console.error("Error creating reply message:", error)
+    throw error
+  }
+}
+
+// Tạo tin nhắn với đề cập
+export const createMessageWithMentions = async (
+  conversationId,
+  senderId,
+  content,
+  mentions,
+  type = "text",
+  attachments = [],
+) => {
+  try {
+    const conversation = await getConversationById(conversationId)
+    if (!conversation) {
+      throw new Error("Conversation not found")
+    }
+
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
+    }
+
+    return await createMessage(conversationId, senderId, receiverId, type, content, attachments, {
+      mentions,
+    })
+  } catch (error) {
+    console.error("Error creating message with mentions:", error)
     throw error
   }
 }

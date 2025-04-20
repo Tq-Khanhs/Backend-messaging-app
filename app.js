@@ -8,6 +8,7 @@ import userRoutes from "./routes/userRoutes.js"
 import imageRoutes from "./routes/imageRoutes.js"
 import friendRoutes from "./routes/friendRoutes.js"
 import messageRoutes from "./routes/messageRoutes.js"
+import groupRoutes from "./routes/groupRoutes.js"
 import { errorHandler } from "./middleware/errorMiddleware.js"
 import { initializeStorage } from "./config/supabaseConfig.js"
 import { connectDB } from "./config/mongodbConfig.js"
@@ -32,6 +33,7 @@ app.use("/api/users", userRoutes)
 app.use("/api/images", imageRoutes)
 app.use("/api/friends", friendRoutes)
 app.use("/api/messages", messageRoutes)
+app.use("/api/groups", groupRoutes)
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" })

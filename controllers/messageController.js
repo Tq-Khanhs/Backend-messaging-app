@@ -11,10 +11,13 @@ import {
   recallMessage,
   forwardMessage,
   getUnreadMessageCount,
+  createReplyMessage,
+  createMessageWithMentions,
 } from "../models/messageModel.js"
 import { checkFriendship } from "../models/friendModel.js"
 import { getUserById } from "../models/userModel.js"
 import { uploadImage } from "../services/supabaseStorageService.js"
+import { getGroupByConversationId } from "../models/groupModel.js"
 
 export const getConversations = async (req, res) => {
   try {
@@ -25,57 +28,101 @@ export const getConversations = async (req, res) => {
     // Use Promise.allSettled instead of Promise.all to prevent one failed promise from rejecting all
     const conversationsWithDetailsPromises = conversations.map(async (conversation) => {
       try {
-        const otherParticipantId = conversation.participants.find((id) => id !== userId)
+        // Xử lý khác nhau cho nhóm và chat 1-1
+        if (conversation.isGroup) {
+          // Lấy thông tin nhóm
+          const group = await getGroupByConversationId(conversation.conversationId)
 
-        if (!otherParticipantId) {
-          console.warn(`Could not find other participant in conversation ${conversation.conversationId}`)
-          return null
-        }
-
-        let otherParticipant = await getUserById(otherParticipantId)
-
-        // If participant doesn't exist, create a fallback participant object
-        if (!otherParticipant) {
-          console.warn(
-            `Other participant with ID ${otherParticipantId} not found for conversation ${conversation.conversationId}`,
-          )
-
-          // Create a fallback participant object
-          otherParticipant = {
-            userId: otherParticipantId,
-            fullName: "Deleted User",
-            avatarUrl: null,
-            email: "deleted@user.com",
+          if (!group) {
+            console.warn(`Group not found for conversation ${conversation.conversationId}`)
+            return null
           }
-        }
 
-        let lastMessage = null
-        if (conversation.lastMessageId) {
-          lastMessage = await getMessageById(conversation.lastMessageId)
-        }
+          let lastMessage = null
+          if (conversation.lastMessageId) {
+            lastMessage = await getMessageById(conversation.lastMessageId)
+          }
 
-        const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
+          const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
 
-        return {
-          conversationId: conversation.conversationId,
-          participant: {
-            userId: otherParticipant.userId,
-            fullName: otherParticipant.fullName,
-            avatarUrl: otherParticipant.avatarUrl,
-          },
-          lastMessage: lastMessage
-            ? {
-                messageId: lastMessage.messageId,
-                senderId: lastMessage.senderId,
-                type: lastMessage.type,
-                content: lastMessage.content,
-                isDeleted: lastMessage.isDeleted,
-                isRecalled: lastMessage.isRecalled,
-                createdAt: lastMessage.createdAt,
-              }
-            : null,
-          lastMessageAt: conversation.lastMessageAt,
-          unreadCount,
+          return {
+            conversationId: conversation.conversationId,
+            isGroup: true,
+            group: {
+              groupId: group.groupId,
+              name: group.name,
+              avatarUrl: group.avatarUrl,
+              memberCount: group.members.length,
+            },
+            lastMessage: lastMessage
+              ? {
+                  messageId: lastMessage.messageId,
+                  senderId: lastMessage.senderId,
+                  type: lastMessage.type,
+                  content: lastMessage.content,
+                  isDeleted: lastMessage.isDeleted,
+                  isRecalled: lastMessage.isRecalled,
+                  createdAt: lastMessage.createdAt,
+                }
+              : null,
+            lastMessageAt: conversation.lastMessageAt,
+            unreadCount,
+          }
+        } else {
+          // Xử lý cho chat 1-1 (giữ nguyên code cũ)
+          const otherParticipantId = conversation.participants.find((id) => id !== userId)
+
+          if (!otherParticipantId) {
+            console.warn(`Could not find other participant in conversation ${conversation.conversationId}`)
+            return null
+          }
+
+          let otherParticipant = await getUserById(otherParticipantId)
+
+          // If participant doesn't exist, create a fallback participant object
+          if (!otherParticipant) {
+            console.warn(
+              `Other participant with ID ${otherParticipantId} not found for conversation ${conversation.conversationId}`,
+            )
+
+            // Create a fallback participant object
+            otherParticipant = {
+              userId: otherParticipantId,
+              fullName: "Deleted User",
+              avatarUrl: null,
+              email: "deleted@user.com",
+            }
+          }
+
+          let lastMessage = null
+          if (conversation.lastMessageId) {
+            lastMessage = await getMessageById(conversation.lastMessageId)
+          }
+
+          const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
+
+          return {
+            conversationId: conversation.conversationId,
+            isGroup: false,
+            participant: {
+              userId: otherParticipant.userId,
+              fullName: otherParticipant.fullName,
+              avatarUrl: otherParticipant.avatarUrl,
+            },
+            lastMessage: lastMessage
+              ? {
+                  messageId: lastMessage.messageId,
+                  senderId: lastMessage.senderId,
+                  type: lastMessage.type,
+                  content: lastMessage.content,
+                  isDeleted: lastMessage.isDeleted,
+                  isRecalled: lastMessage.isRecalled,
+                  createdAt: lastMessage.createdAt,
+                }
+              : null,
+            lastMessageAt: conversation.lastMessageAt,
+            unreadCount,
+          }
         }
       } catch (error) {
         console.error(`Error processing conversation ${conversation.conversationId}:`, error)
@@ -118,22 +165,81 @@ export const getMessages = async (req, res) => {
 
     const messages = await getConversationMessages(conversationId, Number.parseInt(limit), before)
 
+    // Đánh dấu tin nhắn đã đọc
     await markConversationAsRead(conversationId, userId)
+
+    // Lấy thông tin người gửi cho mỗi tin nhắn
+    const messagesWithSenderInfo = await Promise.all(
+      messages.map(async (msg) => {
+        let sender = null
+
+        if (msg.senderId === "system") {
+          sender = {
+            userId: "system",
+            fullName: "System",
+            avatarUrl: null,
+          }
+        } else {
+          const user = await getUserById(msg.senderId)
+          sender = user
+            ? {
+                userId: user.userId,
+                fullName: user.fullName,
+                avatarUrl: user.avatarUrl,
+              }
+            : {
+                userId: msg.senderId,
+                fullName: "Unknown User",
+                avatarUrl: null,
+              }
+        }
+
+        // Lấy thông tin tin nhắn trả lời nếu có
+        let replyToMessage = null
+        if (msg.replyTo) {
+          const originalMsg = await getMessageById(msg.replyTo)
+          if (originalMsg) {
+            const originalSender = await getUserById(originalMsg.senderId)
+            replyToMessage = {
+              messageId: originalMsg.messageId,
+              content: originalMsg.content,
+              type: originalMsg.type,
+              attachments: originalMsg.attachments,
+              sender: originalSender
+                ? {
+                    userId: originalSender.userId,
+                    fullName: originalSender.fullName,
+                  }
+                : {
+                    userId: originalMsg.senderId,
+                    fullName: "Unknown User",
+                  },
+            }
+          }
+        }
+
+        return {
+          messageId: msg.messageId,
+          senderId: msg.senderId,
+          sender,
+          type: msg.type,
+          content: msg.content,
+          attachments: msg.attachments,
+          isDeleted: msg.isDeleted,
+          isRecalled: msg.isRecalled,
+          readBy: msg.readBy,
+          createdAt: msg.createdAt,
+          forwardedFrom: msg.forwardedFrom,
+          replyTo: replyToMessage,
+          mentions: msg.mentions,
+        }
+      }),
+    )
 
     res.status(200).json({
       message: "Messages retrieved successfully",
-      messages: messages.map((msg) => ({
-        messageId: msg.messageId,
-        senderId: msg.senderId,
-        type: msg.type,
-        content: msg.content,
-        attachments: msg.attachments,
-        isDeleted: msg.isDeleted,
-        isRecalled: msg.isRecalled,
-        readAt: msg.readAt,
-        createdAt: msg.createdAt,
-        forwardedFrom: msg.forwardedFrom,
-      })),
+      messages: messagesWithSenderInfo,
+      isGroup: conversation.isGroup,
     })
   } catch (error) {
     console.error("Error in getMessages:", error)
@@ -160,7 +266,6 @@ export const getOrStartConversation = async (req, res) => {
       return res.status(403).json({ message: "You must be friends to start a conversation" })
     }
 
-    // Create a new conversation
     const conversation = await getOrCreateConversation(userId, otherUserId)
 
     if (!conversation) {
@@ -171,6 +276,7 @@ export const getOrStartConversation = async (req, res) => {
       message: "Conversation retrieved successfully",
       conversation: {
         conversationId: conversation.conversationId,
+        isGroup: false,
         participant: {
           userId: otherUser.userId,
           fullName: otherUser.fullName,
@@ -203,13 +309,30 @@ export const sendTextMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
 
-    if (!receiverId) {
-      return res.status(400).json({ message: "Could not determine message recipient" })
+      if (!receiverId) {
+        return res.status(400).json({ message: "Could not determine message recipient" })
+      }
     }
 
     const message = await createMessage(conversationId, senderId, receiverId, "text", content)
+
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
 
     res.status(201).json({
       message: "Message sent successfully",
@@ -217,6 +340,7 @@ export const sendTextMessage = async (req, res) => {
         messageId: message.messageId,
         conversationId: message.conversationId,
         senderId: message.senderId,
+        sender: senderInfo,
         type: message.type,
         content: message.content,
         createdAt: message.createdAt,
@@ -247,13 +371,30 @@ export const sendEmojiMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
 
-    if (!receiverId) {
-      return res.status(400).json({ message: "Could not determine message recipient" })
+      if (!receiverId) {
+        return res.status(400).json({ message: "Could not determine message recipient" })
+      }
     }
 
     const message = await createMessage(conversationId, senderId, receiverId, "emoji", emoji)
+
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
 
     res.status(201).json({
       message: "Emoji sent successfully",
@@ -261,6 +402,7 @@ export const sendEmojiMessage = async (req, res) => {
         messageId: message.messageId,
         conversationId: message.conversationId,
         senderId: message.senderId,
+        sender: senderInfo,
         type: message.type,
         content: message.content,
         createdAt: message.createdAt,
@@ -271,6 +413,7 @@ export const sendEmojiMessage = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
+
 export const sendImageMessage = async (req, res) => {
   try {
     const { conversationId } = req.body
@@ -290,10 +433,13 @@ export const sendImageMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
 
-    if (!receiverId) {
-      return res.status(400).json({ message: "Could not determine message recipient" })
+      if (!receiverId) {
+        return res.status(400).json({ message: "Could not determine message recipient" })
+      }
     }
 
     const attachments = await Promise.all(
@@ -312,12 +458,27 @@ export const sendImageMessage = async (req, res) => {
 
     const message = await createMessage(conversationId, senderId, receiverId, messageType, "", attachments)
 
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
+
     res.status(201).json({
       message: "Image(s) sent successfully",
       messageData: {
         messageId: message.messageId,
         conversationId: message.conversationId,
         senderId: message.senderId,
+        sender: senderInfo,
         type: message.type,
         attachments: message.attachments,
         createdAt: message.createdAt,
@@ -348,10 +509,13 @@ export const sendFileMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
 
-    if (!receiverId) {
-      return res.status(400).json({ message: "Could not determine message recipient" })
+      if (!receiverId) {
+        return res.status(400).json({ message: "Could not determine message recipient" })
+      }
     }
 
     const result = await uploadImage(req.file.buffer, req.file.mimetype, "files")
@@ -367,12 +531,27 @@ export const sendFileMessage = async (req, res) => {
 
     const message = await createMessage(conversationId, senderId, receiverId, "file", "", attachments)
 
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
+
     res.status(201).json({
       message: "File sent successfully",
       messageData: {
         messageId: message.messageId,
         conversationId: message.conversationId,
         senderId: message.senderId,
+        sender: senderInfo,
         type: message.type,
         attachments: message.attachments,
         createdAt: message.createdAt,
@@ -407,10 +586,13 @@ export const sendVideoMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
 
-    if (!receiverId) {
-      return res.status(400).json({ message: "Could not determine message recipient" })
+      if (!receiverId) {
+        return res.status(400).json({ message: "Could not determine message recipient" })
+      }
     }
 
     const result = await uploadImage(req.file.buffer, req.file.mimetype, "videos")
@@ -426,12 +608,27 @@ export const sendVideoMessage = async (req, res) => {
 
     const message = await createMessage(conversationId, senderId, receiverId, "video", "", attachments)
 
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
+
     res.status(201).json({
       message: "Video sent successfully",
       messageData: {
         messageId: message.messageId,
         conversationId: message.conversationId,
         senderId: message.senderId,
+        sender: senderInfo,
         type: message.type,
         attachments: message.attachments,
         createdAt: message.createdAt,
@@ -442,6 +639,7 @@ export const sendVideoMessage = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
+
 export const markAsRead = async (req, res) => {
   try {
     const { messageId } = req.params
@@ -453,17 +651,34 @@ export const markAsRead = async (req, res) => {
       return res.status(404).json({ message: "Message not found" })
     }
 
-    if (message.receiverId !== userId) {
-      return res.status(403).json({ message: "You can only mark messages sent to you as read" })
+    // Kiểm tra xem người dùng có phải là người nhận tin nhắn không (cho chat 1-1)
+    // Hoặc là thành viên của nhóm (cho chat nhóm)
+    const conversation = await getConversationById(message.conversationId)
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" })
     }
 
-    const updatedMessage = await markMessageAsRead(messageId)
+    if (!conversation.participants.includes(userId)) {
+      return res.status(403).json({ message: "You are not a participant in this conversation" })
+    }
+
+    // Không đánh dấu đã đọc tin nhắn của chính mình
+    if (message.senderId === userId) {
+      return res.status(400).json({ message: "Cannot mark your own message as read" })
+    }
+
+    const updatedMessage = await markMessageAsRead(messageId, userId)
+
+    if (!updatedMessage) {
+      return res.status(400).json({ message: "Message already marked as read or not found" })
+    }
 
     res.status(200).json({
       message: "Message marked as read",
       messageData: {
         messageId: updatedMessage.messageId,
-        readAt: updatedMessage.readAt,
+        readBy: updatedMessage.readBy,
       },
     })
   } catch (error) {
@@ -541,9 +756,26 @@ export const forwardUserMessage = async (req, res) => {
       return res.status(403).json({ message: "You are not a participant in this conversation" })
     }
 
-    const receiverId = conversation.participants.find((id) => id !== senderId)
+    let receiverId = null
+    if (!conversation.isGroup) {
+      receiverId = conversation.participants.find((id) => id !== senderId)
+    }
 
     const forwardedMessage = await forwardMessage(messageId, conversationId, senderId, receiverId)
+
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
 
     res.status(201).json({
       message: "Message forwarded successfully",
@@ -551,6 +783,7 @@ export const forwardUserMessage = async (req, res) => {
         messageId: forwardedMessage.messageId,
         conversationId: forwardedMessage.conversationId,
         senderId: forwardedMessage.senderId,
+        sender: senderInfo,
         type: forwardedMessage.type,
         content: forwardedMessage.content,
         attachments: forwardedMessage.attachments,
@@ -571,6 +804,7 @@ export const forwardUserMessage = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
+
 export const getUnreadCount = async (req, res) => {
   try {
     const userId = req.user.userId
@@ -582,6 +816,159 @@ export const getUnreadCount = async (req, res) => {
     })
   } catch (error) {
     console.error("Error in getUnreadCount:", error)
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+}
+
+// Gửi tin nhắn trả lời
+export const sendReplyMessage = async (req, res) => {
+  try {
+    const { conversationId, replyToMessageId, content } = req.body
+    const senderId = req.user.userId
+
+    if (!content || content.trim() === "") {
+      return res.status(400).json({ message: "Message content cannot be empty" })
+    }
+
+    if (!replyToMessageId) {
+      return res.status(400).json({ message: "Reply message ID is required" })
+    }
+
+    const conversation = await getConversationById(conversationId)
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" })
+    }
+
+    if (!conversation.participants.includes(senderId)) {
+      return res.status(403).json({ message: "You are not a participant in this conversation" })
+    }
+
+    const message = await createReplyMessage(conversationId, senderId, replyToMessageId, content)
+
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
+
+    // Lấy thông tin tin nhắn gốc
+    const originalMessage = await getMessageById(replyToMessageId)
+    const originalSender = originalMessage ? await getUserById(originalMessage.senderId) : null
+
+    const replyToInfo = originalMessage
+      ? {
+          messageId: originalMessage.messageId,
+          content: originalMessage.content,
+          type: originalMessage.type,
+          attachments: originalMessage.attachments,
+          sender: originalSender
+            ? {
+                userId: originalSender.userId,
+                fullName: originalSender.fullName,
+              }
+            : {
+                userId: originalMessage.senderId,
+                fullName: "Unknown User",
+              },
+        }
+      : null
+
+    res.status(201).json({
+      message: "Reply sent successfully",
+      messageData: {
+        messageId: message.messageId,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        sender: senderInfo,
+        type: message.type,
+        content: message.content,
+        replyTo: replyToInfo,
+        createdAt: message.createdAt,
+      },
+    })
+  } catch (error) {
+    console.error("Error in sendReplyMessage:", error)
+
+    if (error.message === "Original message not found") {
+      return res.status(404).json({ message: error.message })
+    }
+
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+}
+
+// Gửi tin nhắn với đề cập
+export const sendMessageWithMention = async (req, res) => {
+  try {
+    const { conversationId, content, mentions } = req.body
+    const senderId = req.user.userId
+
+    if (!content || content.trim() === "") {
+      return res.status(400).json({ message: "Message content cannot be empty" })
+    }
+
+    if (!mentions || !Array.isArray(mentions) || mentions.length === 0) {
+      return res.status(400).json({ message: "Mentions are required" })
+    }
+
+    const conversation = await getConversationById(conversationId)
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" })
+    }
+
+    if (!conversation.participants.includes(senderId)) {
+      return res.status(403).json({ message: "You are not a participant in this conversation" })
+    }
+
+    // Kiểm tra xem những người được đề cập có trong cuộc trò chuyện không
+    const validMentions = []
+    for (const mention of mentions) {
+      if (conversation.participants.includes(mention.userId)) {
+        validMentions.push(mention)
+      }
+    }
+
+    const message = await createMessageWithMentions(conversationId, senderId, content, validMentions)
+
+    // Lấy thông tin người gửi
+    const sender = await getUserById(senderId)
+    const senderInfo = sender
+      ? {
+          userId: sender.userId,
+          fullName: sender.fullName,
+          avatarUrl: sender.avatarUrl,
+        }
+      : {
+          userId: senderId,
+          fullName: "Unknown User",
+          avatarUrl: null,
+        }
+
+    res.status(201).json({
+      message: "Message with mentions sent successfully",
+      messageData: {
+        messageId: message.messageId,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        sender: senderInfo,
+        type: message.type,
+        content: message.content,
+        mentions: message.mentions,
+        createdAt: message.createdAt,
+      },
+    })
+  } catch (error) {
+    console.error("Error in sendMessageWithMention:", error)
     res.status(500).json({ message: "Server error", error: error.message })
   }
 }
