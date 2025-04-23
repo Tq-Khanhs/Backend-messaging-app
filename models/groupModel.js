@@ -227,7 +227,7 @@ export const removeGroupMember = async (groupId, userId, removedBy) => {
       throw new Error("User is not a member of this group")
     }
 
-    // Kiểm tra xem người bị xóa có phải là admin duy nhất không
+    // Kiểm tra xem người bị xóa có phải l�� admin duy nhất không
     if (group.members[memberIndex].role === GROUP_ROLES.ADMIN) {
       const adminCount = group.members.filter((member) => member.role === GROUP_ROLES.ADMIN).length
       if (adminCount === 1) {
@@ -328,6 +328,11 @@ export const dissolveGroup = async (groupId, userId) => {
     // Đánh dấu nhóm không còn hoạt động
     group.isActive = false
     await group.save()
+
+    // Xóa conversation của nhóm
+    const Conversation = mongoose.model("Conversation")
+    await Conversation.deleteOne({ conversationId: group.conversationId })
+    console.log(`Deleted conversation ${group.conversationId} for dissolved group ${groupId}`)
 
     return { success: true, message: "Group dissolved successfully" }
   } catch (error) {

@@ -18,6 +18,7 @@ import { checkFriendship } from "../models/friendModel.js"
 import { getUserById } from "../models/userModel.js"
 import { uploadImage } from "../services/supabaseStorageService.js"
 import { getGroupByConversationId } from "../models/groupModel.js"
+import { emitToConversation, emitToUser } from "../socket/socketManager.js"
 
 export const getConversations = async (req, res) => {
   try {
@@ -167,6 +168,17 @@ export const getMessages = async (req, res) => {
 
     // Đánh dấu tin nhắn đã đọc
     await markConversationAsRead(conversationId, userId)
+
+    // Emit read status to other participants
+    conversation.participants.forEach((participantId) => {
+      if (participantId !== userId) {
+        emitToUser(req.io, participantId, "messages_read", {
+          conversationId,
+          userId,
+          readAt: new Date(),
+        })
+      }
+    })
 
     // Lấy thông tin người gửi cho mỗi tin nhắn
     const messagesWithSenderInfo = await Promise.all(
@@ -334,17 +346,22 @@ export const sendTextMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      content: message.content,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Message sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        content: message.content,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendTextMessage:", error)
@@ -396,17 +413,22 @@ export const sendEmojiMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      content: message.content,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Emoji sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        content: message.content,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendEmojiMessage:", error)
@@ -472,17 +494,22 @@ export const sendImageMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      attachments: message.attachments,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Image(s) sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        attachments: message.attachments,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendImageMessage:", error)
@@ -545,17 +572,22 @@ export const sendFileMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      attachments: message.attachments,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "File sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        attachments: message.attachments,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendFileMessage:", error)
@@ -622,17 +654,22 @@ export const sendVideoMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      attachments: message.attachments,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Video sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        attachments: message.attachments,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendVideoMessage:", error)
@@ -674,6 +711,16 @@ export const markAsRead = async (req, res) => {
       return res.status(400).json({ message: "Message already marked as read or not found" })
     }
 
+    // Emit read status to sender
+    emitToUser(req.io, message.senderId, "message_read", {
+      messageId,
+      conversationId: message.conversationId,
+      readBy: {
+        userId,
+        readAt: new Date(),
+      },
+    })
+
     res.status(200).json({
       message: "Message marked as read",
       messageData: {
@@ -692,7 +739,19 @@ export const deleteUserMessage = async (req, res) => {
     const { messageId } = req.params
     const userId = req.user.userId
 
+    const message = await getMessageById(messageId)
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" })
+    }
+
     const deletedMessage = await deleteMessage(messageId, userId)
+
+    // Notify all participants in the conversation about the deleted message
+    emitToConversation(req.io, message.conversationId, "message_deleted", {
+      messageId: deletedMessage.messageId,
+      conversationId: message.conversationId,
+      isDeleted: deletedMessage.isDeleted,
+    })
 
     res.status(200).json({
       message: "Message deleted successfully",
@@ -717,7 +776,19 @@ export const recallUserMessage = async (req, res) => {
     const { messageId } = req.params
     const userId = req.user.userId
 
+    const message = await getMessageById(messageId)
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" })
+    }
+
     const recalledMessage = await recallMessage(messageId, userId)
+
+    // Notify all participants in the conversation about the recalled message
+    emitToConversation(req.io, message.conversationId, "message_recalled", {
+      messageId: recalledMessage.messageId,
+      conversationId: message.conversationId,
+      isRecalled: recalledMessage.isRecalled,
+    })
 
     res.status(200).json({
       message: "Message recalled successfully",
@@ -777,19 +848,24 @@ export const forwardUserMessage = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: forwardedMessage.messageId,
+      conversationId: forwardedMessage.conversationId,
+      senderId: forwardedMessage.senderId,
+      sender: senderInfo,
+      type: forwardedMessage.type,
+      content: forwardedMessage.content,
+      attachments: forwardedMessage.attachments,
+      forwardedFrom: forwardedMessage.forwardedFrom,
+      createdAt: forwardedMessage.createdAt,
+    }
+
+    // Emit forwarded message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Message forwarded successfully",
-      messageData: {
-        messageId: forwardedMessage.messageId,
-        conversationId: forwardedMessage.conversationId,
-        senderId: forwardedMessage.senderId,
-        sender: senderInfo,
-        type: forwardedMessage.type,
-        content: forwardedMessage.content,
-        attachments: forwardedMessage.attachments,
-        forwardedFrom: forwardedMessage.forwardedFrom,
-        createdAt: forwardedMessage.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in forwardUserMessage:", error)
@@ -882,18 +958,23 @@ export const sendReplyMessage = async (req, res) => {
         }
       : null
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      content: message.content,
+      replyTo: replyToInfo,
+      createdAt: message.createdAt,
+    }
+
+    // Emit reply message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
     res.status(201).json({
       message: "Reply sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        content: message.content,
-        replyTo: replyToInfo,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendReplyMessage:", error)
@@ -954,18 +1035,31 @@ export const sendMessageWithMention = async (req, res) => {
           avatarUrl: null,
         }
 
+    const messageData = {
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      sender: senderInfo,
+      type: message.type,
+      content: message.content,
+      mentions: message.mentions,
+      createdAt: message.createdAt,
+    }
+
+    // Emit message to all participants in the conversation
+    emitToConversation(req.io, conversationId, "new_message", messageData)
+
+    // Send special notification to mentioned users
+    validMentions.forEach((mention) => {
+      emitToUser(req.io, mention.userId, "mention", {
+        ...messageData,
+        mentionedBy: senderInfo,
+      })
+    })
+
     res.status(201).json({
       message: "Message with mentions sent successfully",
-      messageData: {
-        messageId: message.messageId,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        sender: senderInfo,
-        type: message.type,
-        content: message.content,
-        mentions: message.mentions,
-        createdAt: message.createdAt,
-      },
+      messageData,
     })
   } catch (error) {
     console.error("Error in sendMessageWithMention:", error)

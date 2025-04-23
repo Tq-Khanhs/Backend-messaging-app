@@ -55,7 +55,7 @@ router.put("/:groupId", updateGroup)
 router.post("/:groupId/avatar", upload.single("avatar"), uploadGroupAvatar)
 
 // Giải tán nhóm
-router.delete("/:groupId", deleteGroup)
+router.delete("/:groupId",authenticate, deleteGroup)
 
 // Rời khỏi nhóm
 router.post("/:groupId/leave", leaveGroupChat)
