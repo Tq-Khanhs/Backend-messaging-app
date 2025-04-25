@@ -13,6 +13,7 @@ const userSocketMap = new Map() // userId -> Set of socket IDs
 const socketUserMap = new Map() // socketId -> userId
 const userConversationsMap = new Map() // userId -> Set of conversationIds
 const userGroupsMap = new Map() // userId -> Set of groupIds
+const clientInfoMap = new Map() // socketId -> { platform, deviceId, appVersion }
 
 // Initialize Socket.IO server
 export const initializeSocketServer = (server) => {
@@ -23,12 +24,14 @@ export const initializeSocketServer = (server) => {
       credentials: true,
     },
     pingTimeout: 60000,
+    transports: ["websocket", "polling"],
   })
 
   // Middleware for authentication
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token || socket.handshake.query.token
+      const { platform, deviceId, appVersion } = socket.handshake.auth
 
       if (!token) {
         return next(new Error("Authentication token is required"))
@@ -48,6 +51,13 @@ export const initializeSocketServer = (server) => {
         avatarUrl: user.avatarUrl,
       }
 
+      // Store client info
+      clientInfoMap.set(socket.id, {
+        platform: platform || "unknown",
+        deviceId: deviceId || "unknown",
+        appVersion: appVersion || "unknown",
+      })
+
       next()
     } catch (error) {
       console.error("Socket authentication error:", error)
@@ -57,8 +67,9 @@ export const initializeSocketServer = (server) => {
 
   io.on(EVENTS.CONNECT, (socket) => {
     const userId = socket.user.userId
+    const clientInfo = clientInfoMap.get(socket.id)
 
-    console.log(`User connected: ${userId}, Socket ID: ${socket.id}`)
+    console.log(`User connected: ${userId}, Socket ID: ${socket.id}, Platform: ${clientInfo.platform}, Device: ${clientInfo.deviceId}`)
 
     // Add user to connection maps
     if (!userSocketMap.has(userId)) {
@@ -73,7 +84,11 @@ export const initializeSocketServer = (server) => {
     socket.join(userId)
 
     // Emit online status to all users
-    emitUserStatus(io, userId, true)
+    emitUserStatus(io, userId, true, {
+      platform: clientInfo.platform,
+      deviceId: clientInfo.deviceId,
+      appVersion: clientInfo.appVersion,
+    })
 
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {
@@ -92,7 +107,7 @@ export const initializeSocketServer = (server) => {
 
         socket.join(conversationId)
         userConversationsMap.get(userId).add(conversationId)
-        console.log(`User ${userId} joined conversation: ${conversationId}`)
+        console.log(`User ${userId} joined conversation: ${conversationId} from ${clientInfo.platform}`)
 
         // Emit user joined event to let others know user joined
         socket.to(conversationId).emit(EVENTS.USER_JOINED, {
@@ -101,6 +116,8 @@ export const initializeSocketServer = (server) => {
           avatarUrl: socket.user.avatarUrl,
           conversationId,
           timestamp: new Date(),
+          platform: clientInfo.platform,
+          deviceId: clientInfo.deviceId,
         })
       } catch (error) {
         console.error("Error joining conversation:", error)
@@ -114,7 +131,7 @@ export const initializeSocketServer = (server) => {
       if (userConversationsMap.has(userId)) {
         userConversationsMap.get(userId).delete(conversationId)
       }
-      console.log(`User ${userId} left conversation: ${conversationId}`)
+      console.log(`User ${userId} left conversation: ${conversationId} from ${clientInfo.platform}`)
 
       // Emit to others that user left
       socket.to(conversationId).emit(EVENTS.USER_LEFT, {
@@ -122,6 +139,8 @@ export const initializeSocketServer = (server) => {
         fullName: socket.user.fullName,
         conversationId,
         timestamp: new Date(),
+        platform: clientInfo.platform,
+        deviceId: clientInfo.deviceId,
       })
     })
 
@@ -134,6 +153,8 @@ export const initializeSocketServer = (server) => {
         conversationId,
         isTyping,
         timestamp: new Date(),
+        platform: clientInfo.platform,
+        deviceId: clientInfo.deviceId,
       })
     })
 
@@ -159,7 +180,7 @@ export const initializeSocketServer = (server) => {
         userGroupsMap.get(userId).add(groupId)
         userConversationsMap.get(userId).add(group.conversationId)
 
-        console.log(`User ${userId} joined group: ${groupId} and conversation: ${group.conversationId}`)
+        console.log(`User ${userId} joined group: ${groupId} from ${clientInfo.platform}`)
 
         // Notify other group members
         socket.to(`group:${groupId}`).emit(EVENTS.USER_JOINED, {
@@ -168,6 +189,8 @@ export const initializeSocketServer = (server) => {
           avatarUrl: socket.user.avatarUrl,
           groupId,
           timestamp: new Date(),
+          platform: clientInfo.platform,
+          deviceId: clientInfo.deviceId,
         })
       } catch (error) {
         console.error("Error joining group:", error)
@@ -184,6 +207,8 @@ export const initializeSocketServer = (server) => {
           userId,
           conversationId,
           readAt: new Date(),
+          platform: clientInfo.platform,
+          deviceId: clientInfo.deviceId,
         })
       } catch (error) {
         console.error("Error handling message read:", error)
@@ -199,6 +224,8 @@ export const initializeSocketServer = (server) => {
           userId,
           conversationId,
           readAt: new Date(),
+          platform: clientInfo.platform,
+          deviceId: clientInfo.deviceId,
         })
       } catch (error) {
         console.error("Error handling messages read:", error)
@@ -215,6 +242,8 @@ export const initializeSocketServer = (server) => {
           userId,
           groupId,
           readAt: new Date(),
+          platform: clientInfo.platform,
+          deviceId: clientInfo.deviceId,
         })
       } catch (error) {
         console.error("Error handling message read by member:", error)
@@ -224,7 +253,7 @@ export const initializeSocketServer = (server) => {
 
     // Handle disconnection
     socket.on(EVENTS.DISCONNECT, () => {
-      console.log(`User disconnected: ${userId}, Socket ID: ${socket.id}`)
+      console.log(`User disconnected: ${userId}, Socket ID: ${socket.id}, Platform: ${clientInfo.platform}`)
 
       // Remove socket from user's set of connections
       if (userSocketMap.has(userId)) {
@@ -241,6 +270,7 @@ export const initializeSocketServer = (server) => {
       }
 
       socketUserMap.delete(socket.id)
+      clientInfoMap.delete(socket.id)
     })
   })
 
@@ -248,11 +278,14 @@ export const initializeSocketServer = (server) => {
 }
 
 // Emit user online status to all users
-const emitUserStatus = (io, userId, isOnline) => {
+const emitUserStatus = (io, userId, isOnline, clientInfo = {}) => {
   io.emit(userEvent(userId, EVENTS.USER_STATUS), {
     userId,
     isOnline,
     lastSeen: isOnline ? null : new Date(),
+    platform: clientInfo.platform,
+    deviceId: clientInfo.deviceId,
+    appVersion: clientInfo.appVersion,
   })
 }
 
@@ -417,4 +450,17 @@ export const getUserActiveGroups = (userId) => {
     return Array.from(userGroupsMap.get(userId))
   }
   return []
+}
+
+// New function to get user's connected devices
+export const getUserConnectedDevices = (userId) => {
+  if (!userSocketMap.has(userId)) {
+    return []
+  }
+
+  const socketIds = Array.from(userSocketMap.get(userId))
+  return socketIds.map(socketId => ({
+    socketId,
+    ...clientInfoMap.get(socketId)
+  }))
 }
