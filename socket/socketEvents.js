@@ -9,8 +9,6 @@ export const EVENTS = {
     USER_STATUS: "user_status",
     USER_JOINED: "user_joined",
     USER_LEFT: "user_left",
-    USER_DEVICE_CONNECTED: "user_device_connected",
-    USER_DEVICE_DISCONNECTED: "user_device_disconnected",
   
     // Conversation events
     JOIN_CONVERSATION: "join_conversation",
@@ -46,16 +44,8 @@ export const EVENTS = {
     FRIEND_REQUEST_RESPONSE: "friend_request_response",
     FRIEND_REQUEST_CANCELED: "friend_request_canceled",
     FRIEND_REMOVED: "friend_removed",
-
-    // Device events
-    DEVICE_CONNECTED: "device_connected",
-    DEVICE_DISCONNECTED: "device_disconnected",
-    DEVICE_STATUS: "device_status",
   }
   
   // Helper function to create a user-specific event name
   export const userEvent = (userId, event) => `${event}_${userId}`
-  
-  // Helper function to create a device-specific event name
-  export const deviceEvent = (deviceId, event) => `${event}_${deviceId}`
   
