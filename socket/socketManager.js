@@ -76,15 +76,18 @@ export const initializeSocketServer = (server) => {
     emitUserStatus(io, userId, true)
 
 
-    io.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
+    socket.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
       members.forEach((memberId) => {
-        socket.to(memberId).emit(EVENTS.GROUP_CREATED, {
-          groupId,
-          conversationId,
-          addedBy: socket.user.userId,
-        })
-      })
-    })
+        const socketId = userSocketMap[memberId];
+        if (socketId) {
+          io.to(socketId).emit(EVENTS.GROUP_CREATED, {
+            groupId,
+            conversationId,
+            addedBy: socket.userId,
+          });
+        }
+      });
+    });
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {
       try {
