@@ -75,6 +75,16 @@ export const initializeSocketServer = (server) => {
     // Emit online status to all users
     emitUserStatus(io, userId, true)
 
+
+    io.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
+      members.forEach((memberId) => {
+        socket.to(memberId).emit(EVENTS.GROUP_CREATED, {
+          groupId,
+          conversationId,
+          addedBy: socket.user.userId,
+        })
+      })
+    })
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {
       try {
