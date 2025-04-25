@@ -274,6 +274,7 @@ export const emitToUser = (io, userId, event, data) => {
   }
 }
 
+// Update the emitToConversation function to ensure all participants receive the update
 export const emitToConversation = (io, conversationId, event, data) => {
   if (!io) {
     console.error("Socket.io instance not available")
@@ -295,6 +296,15 @@ export const emitToConversation = (io, conversationId, event, data) => {
           io.to(conversationId).emit(event, {
             ...data,
             timestamp: new Date(),
+          })
+
+          // Also emit to each participant individually to ensure they receive it
+          // even if they're not currently in the conversation room
+          conversation.participants.forEach((participantId) => {
+            io.to(participantId).emit(event, {
+              ...data,
+              timestamp: new Date(),
+            })
           })
 
           console.log(
