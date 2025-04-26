@@ -69,19 +69,26 @@ export const initializeSocketServer = (server) => {
     userSocketMap.get(userId).add(socket.id)
     socketUserMap.set(socket.id, userId)
 
-
+    // Join user to their personal room
     socket.join(userId)
 
-  
+    // Emit online status to all users
     emitUserStatus(io, userId, true)
 
     socket.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
       try {
         const creatorId = socket.user.userId
         const creatorName = socket.user.fullName || "User"
+
+        console.log(
+          `Processing GROUP_CREATED event - groupId: ${groupId}, conversationId: ${conversationId}, members: ${members.join(", ")}`,
+        )
+
+        // Notify each member about the group creation
         members.forEach((memberId) => {
+          // Check if the member has active connections
           if (userSocketMap.has(memberId)) {
-            io.to(memberId).emit(EVENTS.GROUP_CREATED, {
+            const eventData = {
               groupId,
               conversationId,
               addedBy: {
@@ -89,9 +96,14 @@ export const initializeSocketServer = (server) => {
                 fullName: creatorName,
               },
               timestamp: new Date(),
-            })
+            }
 
-            console.log(`Emitted GROUP_CREATED event to member ${memberId} for group ${groupId}`)
+            // Emit to all of the member's socket connections
+            io.to(memberId).emit(EVENTS.GROUP_CREATED, eventData)
+
+            console.log(`Emitted GROUP_CREATED event to member ${memberId} for group ${groupId || "unknown"}`)
+          } else {
+            console.log(`Member ${memberId} is not currently connected, skipping notification`)
           }
         })
       } catch (error) {
@@ -99,7 +111,6 @@ export const initializeSocketServer = (server) => {
         socket.emit(EVENTS.ERROR, { message: "Failed to notify group members", error: error.message })
       }
     })
-    
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {
       try {
