@@ -75,26 +75,17 @@ export const initializeSocketServer = (server) => {
     // Emit online status to all users
     emitUserStatus(io, userId, true)
 
-    // Handle GROUP_CREATED event (client-side relay)
-    socket.on("GROUP_CREATED", (data) => {
-      try {
-        // Log the complete data received
-        console.log(`Received GROUP_CREATED event with data:`, JSON.stringify(data))
-
-        const { groupId, conversationId, name, description, members, createdBy } = data
-
-        if (!groupId) {
-          console.error("Missing groupId in GROUP_CREATED event")
-          return
+    socket.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
+      members.forEach((memberId) => {
+        const socketId = userSocketMap[memberId]
+        if (socketId) {
+          io.to(socketId).emit(EVENTS.GROUP_CREATED, {
+            groupId,
+            conversationId,
+            addedBy: socket.userId,
+          })
         }
-
-        // This is a client-side relay, so we don't need to re-emit to all members
-        // The server already does that directly
-
-        console.log(`Successfully processed GROUP_CREATED event for group ${groupId}`)
-      } catch (error) {
-        console.error("Error processing GROUP_CREATED event:", error)
-      }
+      })
     })
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {

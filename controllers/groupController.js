@@ -82,34 +82,6 @@ export const createNewGroup = async (req, res) => {
       })
     })
 
-    // Also emit the GROUP_CREATED socket event for real-time notifications
-    if (req.io) {
-      // Include all necessary data in the event
-      const groupData = {
-        groupId: group.groupId,
-        conversationId: group.conversationId,
-        name: group.name,
-        description: group.description,
-        createdBy: {
-          userId: creatorId,
-          fullName: req.user.fullName || "User",
-        },
-        members: validMembers.map((member) => member.userId),
-      }
-
-      console.log(`Direct server emission of GROUP_CREATED event with groupId: ${group.groupId}`)
-
-      // Emit to each member individually
-      validMembers.forEach((member) => {
-        req.io.to(member.userId).emit("GROUP_CREATED", groupData)
-        console.log(`Server emitted GROUP_CREATED to member ${member.userId} for group ${group.groupId}`)
-      })
-
-      // Also emit to creator
-      req.io.to(creatorId).emit("GROUP_CREATED", groupData)
-      console.log(`Server emitted GROUP_CREATED to creator ${creatorId} for group ${group.groupId}`)
-    }
-
     res.status(201).json({
       message: "Group created successfully",
       group: groupInfo,
