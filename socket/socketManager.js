@@ -75,40 +75,25 @@ export const initializeSocketServer = (server) => {
     // Emit online status to all users
     emitUserStatus(io, userId, true)
 
-    socket.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
+    // Handle GROUP_CREATED event (client-side relay)
+    socket.on("GROUP_CREATED", (data) => {
       try {
-        const creatorId = socket.user.userId
-        const creatorName = socket.user.fullName || "User"
+        // Log the complete data received
+        console.log(`Received GROUP_CREATED event with data:`, JSON.stringify(data))
 
-        console.log(
-          `Processing GROUP_CREATED event - groupId: ${groupId}, conversationId: ${conversationId}, members: ${members.join(", ")}`,
-        )
+        const { groupId, conversationId, name, description, members, createdBy } = data
 
-        // Notify each member about the group creation
-        members.forEach((memberId) => {
-          // Check if the member has active connections
-          if (userSocketMap.has(memberId)) {
-            const eventData = {
-              groupId,
-              conversationId,
-              addedBy: {
-                userId: creatorId,
-                fullName: creatorName,
-              },
-              timestamp: new Date(),
-            }
+        if (!groupId) {
+          console.error("Missing groupId in GROUP_CREATED event")
+          return
+        }
 
-            // Emit to all of the member's socket connections
-            io.to(memberId).emit(EVENTS.GROUP_CREATED, eventData)
+        // This is a client-side relay, so we don't need to re-emit to all members
+        // The server already does that directly
 
-            console.log(`Emitted GROUP_CREATED event to member ${memberId} for group ${groupId || "unknown"}`)
-          } else {
-            console.log(`Member ${memberId} is not currently connected, skipping notification`)
-          }
-        })
+        console.log(`Successfully processed GROUP_CREATED event for group ${groupId}`)
       } catch (error) {
-        console.error("Error emitting GROUP_CREATED event:", error)
-        socket.emit(EVENTS.ERROR, { message: "Failed to notify group members", error: error.message })
+        console.error("Error processing GROUP_CREATED event:", error)
       }
     })
     // Handle joining conversation rooms

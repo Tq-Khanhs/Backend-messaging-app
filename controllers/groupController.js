@@ -18,7 +18,6 @@ import { getUserById } from "../models/userModel.js"
 import { createSystemMessage } from "../models/messageModel.js"
 import { uploadImage } from "../services/supabaseStorageService.js"
 import { emitToGroup, emitToUser } from "../socket/socketManager.js"
-import { EVENTS } from "../socket/socketEvents.js"
 
 // Tạo nhóm mới
 export const createNewGroup = async (req, res) => {
@@ -85,31 +84,30 @@ export const createNewGroup = async (req, res) => {
 
     // Also emit the GROUP_CREATED socket event for real-time notifications
     if (req.io) {
-      const socketData = {
+      // Include all necessary data in the event
+      const groupData = {
         groupId: group.groupId,
         conversationId: group.conversationId,
+        name: group.name,
+        description: group.description,
+        createdBy: {
+          userId: creatorId,
+          fullName: req.user.fullName || "User",
+        },
         members: validMembers.map((member) => member.userId),
       }
 
-      // Log the data being sent to help with debugging
-      console.log("Emitting GROUP_CREATED socket event with data:", JSON.stringify(socketData))
+      console.log(`Direct server emission of GROUP_CREATED event with groupId: ${group.groupId}`)
 
-      // Get all sockets for the creator
-      const creatorSockets = Array.from(req.io.sockets.sockets.values()).filter(
-        (socket) => socket.user && socket.user.userId === creatorId,
-      )
+      // Emit to each member individually
+      validMembers.forEach((member) => {
+        req.io.to(member.userId).emit("GROUP_CREATED", groupData)
+        console.log(`Server emitted GROUP_CREATED to member ${member.userId} for group ${group.groupId}`)
+      })
 
-      // Emit the event from one of the creator's sockets if available
-      if (creatorSockets.length > 0) {
-        creatorSockets[0].emit(EVENTS.GROUP_CREATED, socketData)
-        console.log(`Emitted GROUP_CREATED socket event from creator's socket`)
-      } else {
-        console.log(`No active sockets found for creator ${creatorId}, using server emission`)
-        // Fallback: emit directly to members
-        validMembers.forEach((member) => {
-          req.io.to(member.userId).emit(EVENTS.GROUP_CREATED, socketData)
-        })
-      }
+      // Also emit to creator
+      req.io.to(creatorId).emit("GROUP_CREATED", groupData)
+      console.log(`Server emitted GROUP_CREATED to creator ${creatorId} for group ${group.groupId}`)
     }
 
     res.status(201).json({
@@ -221,7 +219,7 @@ export const addMember = async (req, res) => {
     const { userId, role = GROUP_ROLES.MEMBER } = req.body
     const currentUserId = req.user.userId
 
-    // Kiểm tra quy���n của người dùng hiện tại
+    // Kiểm tra quyền của người dùng hiện tại
     const permission = await checkMemberPermission(groupId, currentUserId, GROUP_ROLES.MODERATOR)
     if (!permission.hasPermission) {
       return res.status(403).json({ message: "You don't have permission to add members" })
