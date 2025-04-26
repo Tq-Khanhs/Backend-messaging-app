@@ -69,25 +69,37 @@ export const initializeSocketServer = (server) => {
     userSocketMap.get(userId).add(socket.id)
     socketUserMap.set(socket.id, userId)
 
-    // Join user to their personal room
+
     socket.join(userId)
 
-    // Emit online status to all users
+  
     emitUserStatus(io, userId, true)
 
-
     socket.on(EVENTS.GROUP_CREATED, ({ groupId, conversationId, members }) => {
-      members.forEach((memberId) => {
-        const socketId = userSocketMap[memberId];
-        if (socketId) {
-          io.to(socketId).emit(EVENTS.GROUP_CREATED, {
-            groupId,
-            conversationId,
-            addedBy: socket.userId,
-          });
-        }
-      });
-    });
+      try {
+        const creatorId = socket.user.userId
+        const creatorName = socket.user.fullName || "User"
+        members.forEach((memberId) => {
+          if (userSocketMap.has(memberId)) {
+            io.to(memberId).emit(EVENTS.GROUP_CREATED, {
+              groupId,
+              conversationId,
+              addedBy: {
+                userId: creatorId,
+                fullName: creatorName,
+              },
+              timestamp: new Date(),
+            })
+
+            console.log(`Emitted GROUP_CREATED event to member ${memberId} for group ${groupId}`)
+          }
+        })
+      } catch (error) {
+        console.error("Error emitting GROUP_CREATED event:", error)
+        socket.emit(EVENTS.ERROR, { message: "Failed to notify group members", error: error.message })
+      }
+    })
+    
     // Handle joining conversation rooms
     socket.on(EVENTS.JOIN_CONVERSATION, async (conversationId) => {
       try {
