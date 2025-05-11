@@ -77,9 +77,16 @@ export const createNewGroup = async (req, res) => {
       },
     })
 
+    emitToUser(req.io,creatorId , "group_created", {
+        ...groupInfo,
+        addedBy: {
+          userId: creatorId,
+          fullName: req.user.fullName || "User",
+        },
+      })
     // Also notify other members with group_added event
     validMembers.forEach((member) => {
-      emitToUser(req.io, member.userId, "group_added", {
+      emitToUser(req.io, member.userId, "group_created", {
         ...groupInfo,
         addedBy: {
           userId: creatorId,
