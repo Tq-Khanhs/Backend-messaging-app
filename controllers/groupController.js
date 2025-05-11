@@ -373,7 +373,7 @@ export const updateRole = async (req, res) => {
     )
 
     // Notify the member whose role was updated
-    emitToUser(req.io, memberId, "role_updated", {
+    emitToUser(req.io, memberId, "member_role_updated", {
       groupId,
       role,
       updatedBy: {
@@ -383,7 +383,7 @@ export const updateRole = async (req, res) => {
     })
 
     // Notify all group members
-    emitToGroup(req.io, groupId, "member_role_updated", {
+    emitToGroup(req.io, groupId, "group_updated", {
       groupId,
       member: {
         userId: memberId,
