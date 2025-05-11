@@ -284,7 +284,8 @@ export const removeMember = async (req, res) => {
   try {
     const { groupId, memberId } = req.params
     const currentUserId = req.user.userId
-
+    const groupCurrent = await getGroupById(groupId)
+    const memberIds = groupCurrent.members.map((member) => member.userId)  
     // Kiểm tra quyền của người dùng hiện tại
     const permission = await checkMemberPermission(groupId, currentUserId, GROUP_ROLES.MODERATOR)
     if (!permission.hasPermission) {
@@ -315,7 +316,7 @@ export const removeMember = async (req, res) => {
       `${currentUser.fullName || "User"} removed ${removedUser.fullName || "a member"} from the group`,
     )
 
-    const memberIds = group.members.map((member) => member.userId)
+    
 
 
     memberIds.forEach((memberId) => {
