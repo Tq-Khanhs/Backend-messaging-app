@@ -77,13 +77,13 @@ export const createNewGroup = async (req, res) => {
       },
     })
 
-    emitToUser(req.io,creatorId , "group_created", {
-        ...groupInfo,
-        addedBy: {
-          userId: creatorId,
-          fullName: req.user.fullName || "User",
-        },
-      })
+    emitToUser(req.io, creatorId, "group_created", {
+      ...groupInfo,
+      addedBy: {
+        userId: creatorId,
+        fullName: req.user.fullName || "User",
+      },
+    })
     // Also notify other members with group_added event
     validMembers.forEach((member) => {
       emitToUser(req.io, member.userId, "group_created", {
@@ -227,20 +227,24 @@ export const addMember = async (req, res) => {
       `${currentUser.fullName || "User"} added ${addedUser.fullName || "a new member"} to the group`,
     )
 
-    // Notify the added user
-    emitToUser(req.io, userId, "group_added", {
-      groupId: group.groupId,
-      name: group.name,
-      description: group.description,
-      avatarUrl: group.avatarUrl,
-      conversationId: group.conversationId,
-      addedBy: {
-        userId: currentUserId,
-        fullName: currentUser.fullName || "User",
-      },
+
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "group_added", {
+        groupId: group.groupId,
+        name: group.name,
+        description: group.description,
+        avatarUrl: group.avatarUrl,
+        conversationId: group.conversationId,
+        addedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName || "User",
+        },
+      })
     })
 
-    // Notify all group members about the new member
     emitToGroup(req.io, groupId, "member_added", {
       groupId,
       member: {
@@ -311,16 +315,20 @@ export const removeMember = async (req, res) => {
       `${currentUser.fullName || "User"} removed ${removedUser.fullName || "a member"} from the group`,
     )
 
-    // Notify the removed member
-    emitToUser(req.io, memberId, "group_removed", {
-      groupId,
-      removedBy: {
-        userId: currentUserId,
-        fullName: currentUser.fullName || "User",
-      },
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "group_removed", {
+        groupId,
+        removedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName || "User",
+        },
+      })
     })
 
-    // Notify all group members
+
     emitToGroup(req.io, groupId, "member_removed", {
       groupId,
       memberId,
@@ -372,17 +380,21 @@ export const updateRole = async (req, res) => {
       `${currentUser.fullName || "User"} changed ${updatedUser.fullName || "a member"}'s role to ${role}`,
     )
 
-    // Notify the member whose role was updated
-    emitToUser(req.io, memberId, "member_role_updated", {
-      groupId,
-      role,
-      updatedBy: {
-        userId: currentUserId,
-        fullName: currentUser.fullName || "User",
-      },
+
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "member_role_updated", {
+        groupId,
+        role,
+        updatedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName || "User",
+        },
+      })
     })
 
-    // Notify all group members
     emitToGroup(req.io, groupId, "group_updated", {
       groupId,
       member: {
@@ -447,7 +459,23 @@ export const updateGroup = async (req, res) => {
     const currentUser = await getUserById(currentUserId)
     await createSystemMessage(group.conversationId, `${currentUser.fullName || "User"} updated the group information`)
 
-    // Notify all group members
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "group_updated", {
+        groupId,
+        name: group.name,
+        description: group.description,
+        settings: group.settings,
+        updatedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName,
+        },
+      })
+    })
+
+
     emitToGroup(req.io, groupId, "group_updated", {
       groupId,
       name: group.name,
@@ -508,7 +536,22 @@ export const uploadGroupAvatar = async (req, res) => {
     const currentUser = await getUserById(currentUserId)
     await createSystemMessage(group.conversationId, `${currentUser.fullName || "User"} updated the group avatar`)
 
-    // Notify all group members
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "group_avatar_updated", {
+        groupId,
+        avatarUrl: result.url,
+        updatedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName,
+        },
+      })
+    })
+
+
+
     emitToGroup(req.io, groupId, "group_avatar_updated", {
       groupId,
       avatarUrl: result.url,
@@ -600,7 +643,21 @@ export const leaveGroupChat = async (req, res) => {
     const group = await getGroupById(groupId)
     await createSystemMessage(group.conversationId, `${currentUser.fullName || "User"} left the group`)
 
-    // Notify other group members
+
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "member_left", {
+        groupId,
+        member: {
+          userId: currentUserId,
+          fullName: currentUser.fullName,
+        },
+      })
+    })
+
+
     emitToGroup(req.io, groupId, "member_left", {
       groupId,
       member: {
@@ -639,7 +696,18 @@ export const updateLastRead = async (req, res) => {
     // Cập nhật tin nhắn đã đọc cuối cùng
     await updateLastReadMessage(groupId, currentUserId, messageId)
 
-    // Emit read status to group
+    const memberIds = group.members.map((member) => member.userId)
+
+
+    memberIds.forEach((memberId) => {
+      emitToUser(req.io, memberId, "message_read_by_member", {
+        groupId,
+        userId: currentUserId,
+        messageId,
+        readAt: new Date(),
+      })
+    })
+
     emitToGroup(req.io, groupId, "message_read_by_member", {
       groupId,
       userId: currentUserId,
