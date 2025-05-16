@@ -285,7 +285,7 @@ export const removeMember = async (req, res) => {
     const { groupId, memberId } = req.params
     const currentUserId = req.user.userId
     const groupCurrent = await getGroupById(groupId)
-    const memberIds = groupCurrent.members.map((member) => member.userId)  
+    const memberIds = groupCurrent.members.map((member) => member.userId)
     // Kiểm tra quyền của người dùng hiện tại
     const permission = await checkMemberPermission(groupId, currentUserId, GROUP_ROLES.MODERATOR)
     if (!permission.hasPermission) {
@@ -316,12 +316,16 @@ export const removeMember = async (req, res) => {
       `${currentUser.fullName || "User"} removed ${removedUser.fullName || "a member"} from the group`,
     )
 
-    
+
 
 
     memberIds.forEach((memberId) => {
       emitToUser(req.io, memberId, "group_removed", {
         groupId,
+        removedUser: {
+          userId: removedUser.userId,
+          fullName: removedUser.fullName,
+        },
         removedBy: {
           userId: currentUserId,
           fullName: currentUser.fullName || "User",
@@ -331,12 +335,15 @@ export const removeMember = async (req, res) => {
 
 
     emitToGroup(req.io, groupId, "member_removed", {
-      groupId,
-      memberId,
-      removedBy: {
-        userId: currentUserId,
-        fullName: currentUser.fullName || "User",
-      },
+       groupId,
+        removedUser: {
+          userId: removedUser.userId,
+          fullName: removedUser.fullName,
+        },
+        removedBy: {
+          userId: currentUserId,
+          fullName: currentUser.fullName || "User",
+        },
     })
 
     res.status(200).json({
