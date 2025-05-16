@@ -359,13 +359,11 @@ export const emitToGroup = (io, groupId, event, data) => {
           return
         }
 
-        // Emit to group room
         io.to(`group:${groupId}`).emit(event, {
           ...data,
           timestamp: new Date(),
         })
 
-        // For certain events, also emit to the conversation room
         if (
           [
             EVENTS.GROUP_CREATED,
