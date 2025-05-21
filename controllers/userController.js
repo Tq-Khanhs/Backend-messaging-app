@@ -167,13 +167,20 @@ export const searchUsers = async (req, res) => {
 export const updateUserProfile = async (req, res) => {
   try {
     const userId = req.user.userId
-    const { fullName, birthdate, gender, email } = req.body
+    const { fullName, birthdate, gender, email, avatarUrl, avatarKey } = req.body
 
-    const updateData = {
-      fullName,
-      birthdate,
-      gender,
-      avatarUrl
+    const updateData = {}
+    
+    if (fullName !== undefined) updateData.fullName = fullName
+    if (birthdate !== undefined) updateData.birthdate = birthdate
+    if (gender !== undefined) updateData.gender = gender
+    
+    if (avatarUrl !== undefined) {
+      updateData.avatarUrl = avatarUrl
+    }
+  
+    if (avatarKey !== undefined) {
+      updateData.avatarUrl = avatarKey
     }
 
     if (email) {
@@ -189,13 +196,13 @@ export const updateUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" })
     }
 
-    let avatarUrl = null
+    let finalAvatarUrl = null
     if (updatedUser.avatarUrl) {
       try {
         if (updatedUser.avatarUrl.startsWith("http")) {
-          avatarUrl = updatedUser.avatarUrl
+          finalAvatarUrl = updatedUser.avatarUrl
         } else {
-          avatarUrl = await getAvatarUrl(updatedUser.avatarUrl)
+          finalAvatarUrl = await getAvatarUrl(updatedUser.avatarUrl)
         }
       } catch (avatarError) {
         console.warn("Error fetching avatar URL:", avatarError)
@@ -210,7 +217,7 @@ export const updateUserProfile = async (req, res) => {
         fullName: updatedUser.fullName,
         birthdate: updatedUser.birthdate,
         gender: updatedUser.gender,
-        avatarUrl,
+        avatarUrl: finalAvatarUrl,
       },
     })
   } catch (error) {
