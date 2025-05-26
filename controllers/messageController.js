@@ -356,7 +356,6 @@ export const sendTextMessage = async (req, res) => {
       createdAt: message.createdAt,
     }
 
-    // Emit message to all participants in the conversation
     emitToConversation(req.io, conversationId, "new_message", messageData)
 
     res.status(201).json({

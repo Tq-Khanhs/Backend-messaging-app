@@ -11,6 +11,7 @@ import {
 } from "../models/friendModel.js"
 import { getUserById } from "../models/userModel.js"
 import { emitToUser } from "../socket/socketManager.js"
+import { getOrCreateConversation } from ("../models/messageModel.js")
 
 export const sendFriendRequest = async (req, res) => {
   try {
@@ -163,17 +164,30 @@ export const respondToFriendRequest = async (req, res) => {
 
     const status = action === "accept" ? "accepted" : "rejected"
     const updatedRequest = await updateFriendRequestStatus(requestId, status)
-
-    // Get receiver details for notification
+    
+    if (action === "accept") {
+      try {
+        
+        await getOrCreateConversation(friendRequest.senderId, friendRequest.receiverId)
+        console.log(`Created conversation between ${friendRequest.senderId} and ${friendRequest.receiverId}`)
+      } catch (conversationError) {
+        console.error("Error creating conversation after friend request acceptance:", conversationError)
+      }
+    }
     const receiver = await getUserById(userId)
     const receiverInfo = {
       userId: receiver.userId,
       fullName: receiver.fullName,
       avatarUrl: receiver.avatarUrl,
     }
-
-    // Emit friend request response notification to sender
     emitToUser(req.io, friendRequest.senderId, "friend_request_response", {
+      requestId: updatedRequest.requestId,
+      receiver: receiverInfo,
+      status: updatedRequest.status,
+      action,
+    })
+
+    emitToUser(req.io, receiver.userId, "friend_request_response", {
       requestId: updatedRequest.requestId,
       receiver: receiverInfo,
       status: updatedRequest.status,

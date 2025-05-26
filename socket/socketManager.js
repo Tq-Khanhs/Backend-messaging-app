@@ -286,7 +286,6 @@ export const emitToUser = (io, userId, event, data) => {
   }
 }
 
-// Update the emitToConversation function to ensure all participants receive the update
 export const emitToConversation = (io, conversationId, event, data) => {
   if (!io) {
     console.error("Socket.io instance not available")
@@ -294,9 +293,7 @@ export const emitToConversation = (io, conversationId, event, data) => {
   }
 
   try {
-    // For new_message event, ensure all participants receive the update
     if (event === EVENTS.NEW_MESSAGE) {
-      // Get conversation to find all participants
       getConversationById(conversationId)
         .then((conversation) => {
           if (!conversation) {
@@ -304,14 +301,12 @@ export const emitToConversation = (io, conversationId, event, data) => {
             return
           }
 
-          // Broadcast to all sockets in the conversation room
+          
           io.to(conversationId).emit(event, {
             ...data,
             timestamp: new Date(),
           })
 
-          // Also emit to each participant individually to ensure they receive it
-          // even if they're not currently in the conversation room
           conversation.participants.forEach((participantId) => {
             io.to(participantId).emit(event, {
               ...data,
@@ -325,21 +320,18 @@ export const emitToConversation = (io, conversationId, event, data) => {
         })
         .catch((error) => {
           console.error(`Error getting conversation ${conversationId}:`, error)
-          // Fallback to standard room broadcast
           io.to(conversationId).emit(event, {
             ...data,
             timestamp: new Date(),
           })
         })
     } else if (event === EVENTS.MESSAGE_DELETED || event === EVENTS.MESSAGE_RECALLED) {
-      // For message deletion/recall, ensure all participants are notified
       io.to(conversationId).emit(event, {
         ...data,
         timestamp: new Date(),
       })
       console.log(`Emitted ${event} for message in conversation ${conversationId}`)
     } else {
-      // For other events, use standard room broadcast
       io.to(conversationId).emit(event, {
         ...data,
         timestamp: new Date(),
