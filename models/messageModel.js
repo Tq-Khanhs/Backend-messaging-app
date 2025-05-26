@@ -42,9 +42,19 @@ const messageSchema = new mongoose.Schema(
         thumbnailUrl: { type: String },
       },
     ],
+    deletedBy: [
+      {
+        userId: { type: String, ref: "User" },
+        deletedAt: { type: Date, default: Date.now },
+      },
+    ],
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
     isRecalled: {
       type: Boolean,
@@ -325,20 +335,17 @@ export const deleteMessage = async (messageId, userId) => {
     if (!message) {
       throw new Error("Message not found")
     }
-
-    if (message.senderId !== userId) {
-      throw new Error("You can only delete your own messages")
-    }
-
     return await Message.findOneAndUpdate(
       { messageId },
       {
-        isDeleted: true,
-        content: "",
-        attachments: [],
-        type: "deleted",
+        $push: {
+          deletedBy: {
+            userId: userId,
+            deletedAt: new Date(),
+          }
+        }
       },
-      { new: true },
+      { new: true }
     )
   } catch (error) {
     console.error("Error deleting message:", error)
