@@ -52,10 +52,6 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
     isRecalled: {
       type: Boolean,
       default: false,
