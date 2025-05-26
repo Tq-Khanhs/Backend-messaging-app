@@ -69,7 +69,8 @@ export const getConversations = async (req, res) => {
                 isDeleted: isDeletedByCurrentUser, // true nếu bị xóa bởi user hiện tại
                 isRecalled: message.isRecalled,
                 createdAt: message.createdAt,
-                deletedBy: message.deletedBy, // Thêm thông tin deletedBy nếu cần
+                deletedBy: message.deletedBy, // Thêm thông tin deletedBy nếu 
+                readBy: message.readBy
               }
             }
           }
@@ -131,7 +132,8 @@ export const getConversations = async (req, res) => {
                 isDeleted: isDeletedByCurrentUser, // true nếu bị xóa bởi user hiện tại
                 isRecalled: message.isRecalled,
                 createdAt: message.createdAt,
-                deletedBy: message.deletedBy, // Thêm thông tin deletedBy nếu cần
+                deletedBy: message.deletedBy,
+                readBy: message.readBy // Thêm thông tin deletedBy nếu cần
               }
             }
           }
