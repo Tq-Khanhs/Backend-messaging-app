@@ -230,6 +230,12 @@ export const getMessages = async (req, res) => {
           }
         }
 
+        // Kiểm tra xem tin nhắn có bị xóa bởi user hiện tại không
+        // Nếu có thì trả về isDeleted là true, nếu không là false
+        const isDeletedByCurrentUser = msg.deletedBy && msg.deletedBy.length > 0 
+          ? msg.deletedBy.some(deletion => String(deletion.userId) === String(userId))
+          : false
+
         return {
           messageId: msg.messageId,
           senderId: msg.senderId,
@@ -237,8 +243,9 @@ export const getMessages = async (req, res) => {
           type: msg.type,
           content: msg.content,
           attachments: msg.attachments,
-          isDeleted: msg.isDeleted,
+          isDeleted: isDeletedByCurrentUser, // Trả về true nếu bị xóa bởi user hiện tại, false nếu không
           isRecalled: msg.isRecalled,
+          deletedBy: msg.deletedBy,
           readBy: msg.readBy,
           createdAt: msg.createdAt,
           forwardedFrom: msg.forwardedFrom,
