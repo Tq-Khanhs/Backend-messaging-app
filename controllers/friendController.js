@@ -11,7 +11,7 @@ import {
 } from "../models/friendModel.js"
 import { getUserById } from "../models/userModel.js"
 import { emitToUser } from "../socket/socketManager.js"
-import { getOrCreateConversation } from ("../models/messageModel.js")
+import { getOrCreateConversation } from "../models/messageModel.js"
 
 export const sendFriendRequest = async (req, res) => {
   try {
