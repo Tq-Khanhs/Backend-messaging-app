@@ -29,6 +29,20 @@ export const getConversations = async (req, res) => {
     // Use Promise.allSettled instead of Promise.all to prevent one failed promise from rejecting all
     const conversationsWithDetailsPromises = conversations.map(async (conversation) => {
       try {
+        // Hàm helper để kiểm tra tin nhắn có bị xóa bởi user hiện tại không
+        const isMessageDeletedByUser = (message, userId) => {
+          if (!message || !message.deletedBy || !Array.isArray(message.deletedBy) || message.deletedBy.length === 0) {
+            return false
+          }
+          
+          return message.deletedBy.some(deletion => {
+            if (!deletion || !deletion.userId) {
+              return false
+            }
+            return String(deletion.userId) === String(userId)
+          })
+        }
+
         // Xử lý khác nhau cho nhóm và chat 1-1
         if (conversation.isGroup) {
           // Lấy thông tin nhóm
@@ -41,7 +55,23 @@ export const getConversations = async (req, res) => {
 
           let lastMessage = null
           if (conversation.lastMessageId) {
-            lastMessage = await getMessageById(conversation.lastMessageId)
+            const message = await getMessageById(conversation.lastMessageId)
+            
+            if (message) {
+              // Kiểm tra xem tin nhắn có bị xóa bởi user hiện tại không
+              const isDeletedByCurrentUser = isMessageDeletedByUser(message, userId)
+              
+              lastMessage = {
+                messageId: message.messageId,
+                senderId: message.senderId,
+                type: message.type,
+                content: message.content,
+                isDeleted: isDeletedByCurrentUser, // true nếu bị xóa bởi user hiện tại
+                isRecalled: message.isRecalled,
+                createdAt: message.createdAt,
+                deletedBy: message.deletedBy, // Thêm thông tin deletedBy nếu cần
+              }
+            }
           }
 
           const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
@@ -55,22 +85,12 @@ export const getConversations = async (req, res) => {
               avatarUrl: group.avatarUrl,
               memberCount: group.members.length,
             },
-            lastMessage: lastMessage
-              ? {
-                  messageId: lastMessage.messageId,
-                  senderId: lastMessage.senderId,
-                  type: lastMessage.type,
-                  content: lastMessage.content,
-                  isDeleted: lastMessage.isDeleted,
-                  isRecalled: lastMessage.isRecalled,
-                  createdAt: lastMessage.createdAt,
-                }
-              : null,
+            lastMessage,
             lastMessageAt: conversation.lastMessageAt,
             unreadCount,
           }
         } else {
-          // Xử lý cho chat 1-1 (giữ nguyên code cũ)
+          // Xử lý cho chat 1-1
           const otherParticipantId = conversation.participants.find((id) => id !== userId)
 
           if (!otherParticipantId) {
@@ -97,7 +117,23 @@ export const getConversations = async (req, res) => {
 
           let lastMessage = null
           if (conversation.lastMessageId) {
-            lastMessage = await getMessageById(conversation.lastMessageId)
+            const message = await getMessageById(conversation.lastMessageId)
+            
+            if (message) {
+              // Kiểm tra xem tin nhắn có bị xóa bởi user hiện tại không
+              const isDeletedByCurrentUser = isMessageDeletedByUser(message, userId)
+              
+              lastMessage = {
+                messageId: message.messageId,
+                senderId: message.senderId,
+                type: message.type,
+                content: message.content,
+                isDeleted: isDeletedByCurrentUser, // true nếu bị xóa bởi user hiện tại
+                isRecalled: message.isRecalled,
+                createdAt: message.createdAt,
+                deletedBy: message.deletedBy, // Thêm thông tin deletedBy nếu cần
+              }
+            }
           }
 
           const unreadCount = await getUnreadMessageCount(userId, conversation.conversationId)
@@ -110,17 +146,7 @@ export const getConversations = async (req, res) => {
               fullName: otherParticipant.fullName,
               avatarUrl: otherParticipant.avatarUrl,
             },
-            lastMessage: lastMessage
-              ? {
-                  messageId: lastMessage.messageId,
-                  senderId: lastMessage.senderId,
-                  type: lastMessage.type,
-                  content: lastMessage.content,
-                  isDeleted: lastMessage.isDeleted,
-                  isRecalled: lastMessage.isRecalled,
-                  createdAt: lastMessage.createdAt,
-                }
-              : null,
+            lastMessage,
             lastMessageAt: conversation.lastMessageAt,
             unreadCount,
           }
@@ -206,7 +232,6 @@ export const getMessages = async (req, res) => {
               }
         }
 
-        // Lấy thông tin tin nhắn trả lời nếu có
         let replyToMessage = null
         if (msg.replyTo) {
           const originalMsg = await getMessageById(msg.replyTo)
@@ -229,9 +254,6 @@ export const getMessages = async (req, res) => {
             }
           }
         }
-
-        // Kiểm tra xem tin nhắn có bị xóa bởi user hiện tại không
-        // Nếu có thì trả về isDeleted là true, nếu không là false
         const isDeletedByCurrentUser = msg.deletedBy && msg.deletedBy.length > 0 
           ? msg.deletedBy.some(deletion => String(deletion.userId) === String(userId))
           : false
@@ -243,7 +265,7 @@ export const getMessages = async (req, res) => {
           type: msg.type,
           content: msg.content,
           attachments: msg.attachments,
-          isDeleted: isDeletedByCurrentUser, // Trả về true nếu bị xóa bởi user hiện tại, false nếu không
+          isDeleted: isDeletedByCurrentUser, 
           isRecalled: msg.isRecalled,
           deletedBy: msg.deletedBy,
           readBy: msg.readBy,
