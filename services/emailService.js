@@ -36,7 +36,7 @@ export const sendVerificationEmail = async (email) => {
 
     const mailOptions = {
       from: {
-        name: "Your App Name",
+        name: "Zalo app",
         address: process.env.EMAIL_USER,
       },
       to: email,

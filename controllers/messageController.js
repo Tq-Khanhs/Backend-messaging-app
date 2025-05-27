@@ -133,7 +133,7 @@ export const getConversations = async (req, res) => {
                 isRecalled: message.isRecalled,
                 createdAt: message.createdAt,
                 deletedBy: message.deletedBy,
-                readBy: message.readBy // Thêm thông tin deletedBy nếu cần
+                readBy: message.readBy 
               }
             }
           }
