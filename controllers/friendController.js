@@ -12,6 +12,7 @@ import {
 import { getUserById } from "../models/userModel.js"
 import { emitToUser } from "../socket/socketManager.js"
 import { getOrCreateConversation } from "../models/messageModel.js"
+import { createSystemMessage } from "../models/messageModel.js"
 
 export const sendFriendRequest = async (req, res) => {
   try {
@@ -168,7 +169,9 @@ export const respondToFriendRequest = async (req, res) => {
     if (action === "accept") {
       try {
         
-        await getOrCreateConversation(friendRequest.senderId, friendRequest.receiverId)
+        const conversation = await getOrCreateConversation(friendRequest.senderId, friendRequest.receiverId)
+        const systemMessageContent = `You are now friends.`
+        await createSystemMessage(conversation.conversationId, systemMessageContent)
         console.log(`Created conversation between ${friendRequest.senderId} and ${friendRequest.receiverId}`)
       } catch (conversationError) {
         console.error("Error creating conversation after friend request acceptance:", conversationError)
